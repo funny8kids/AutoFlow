@@ -829,7 +829,6 @@ object Registry {
         ItemSpec("nfcDisabled", "NFC 已关闭", "仅 NFC 关闭时执行", Icons.Default.Wifi, "设备"),
         ItemSpec("locationOff", "定位已关闭", "仅定位服务关闭时执行", Icons.Default.Cloud, "设备"),
         ItemSpec("batteryNotCharging", "未在充电", "仅未连接电源时执行", Icons.Default.BatteryChargingFull, "电源"),
-        ItemSpec("wifiConnected", "WiFi 已连接", "仅 WiFi 处于连接状态时执行", Icons.Default.Wifi, "网络"),
         ItemSpec("appNotRunning", "应用未运行", "指定应用进程不存在时执行", Icons.Default.OpenInNew, "应用",
             listOf(ParamSpec("package", "包名"))),
     )

@@ -40,13 +40,19 @@ class RunControlTest {
         }
     }
 
+    /** 高负载下启动可能慢：轮询等待宏进入运行状态。 */
+    private suspend fun awaitRunning(id: String, timeoutMs: Long = 8_000) {
+        withTimeout(timeoutMs) {
+            while (!app().engine.isRunning(id)) delay(25)
+        }
+    }
+
     @Test
     fun deletingMacroStopsRunningLoop() = runBlocking {
         val macro = blinkingMacro("灯光闪烁-删除")
         app().store.upsert(macro)
         app().engine.run(macro)
-        delay(150)
-        assertTrue("应当正在运行", app().engine.isRunning(macro.id))
+        awaitRunning(macro.id)
 
         app().store.delete(macro)   // 删除宏 -> 必须停止执行
         awaitStopped()
@@ -58,7 +64,7 @@ class RunControlTest {
         val macro = blinkingMacro("灯光闪烁-禁用")
         app().store.upsert(macro)
         app().engine.run(macro)
-        delay(150)
+        awaitRunning(macro.id)
         app().store.upsert(macro.copy(enabled = false))
         awaitStopped()
         assertFalse(app().engine.isRunning(macro.id))
@@ -70,9 +76,8 @@ class RunControlTest {
         val b = blinkingMacro("B")
         app().engine.run(a)
         app().engine.run(b)
-        delay(150)
-        assertTrue(app().engine.isRunning(a.id))
-        assertTrue(app().engine.isRunning(b.id))
+        awaitRunning(a.id)
+        awaitRunning(b.id)
         app().engine.cancelAll()
         awaitStopped()
         assertTrue(app().engine.runningIds.value.isEmpty())
