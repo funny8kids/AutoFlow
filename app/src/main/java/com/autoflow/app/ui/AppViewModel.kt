@@ -29,6 +29,10 @@ class AppViewModel : ViewModel() {
     private val deepSeek = DeepSeekClient(aiSettings)
 
     val macros: StateFlow<List<Macro>> = app.store.macros
+    val runningIds: StateFlow<Set<String>> = app.engine.runningIds
+
+    fun stop(macro: Macro) = app.engine.cancel(macro.id)
+    fun stopAll() = app.engine.cancelAll()
     val logs: StateFlow<List<LogEntry>> = app.logs.logs
     val globalVars: StateFlow<List<Variable>> = app.globals.vars
 

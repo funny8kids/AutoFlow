@@ -27,6 +27,12 @@ class MacroStore(private val context: Context) {
     private val _macros = MutableStateFlow<List<Macro>>(emptyList())
     val macros: StateFlow<List<Macro>> = _macros.asStateFlow()
 
+    /** 宏被删除时回调（用于停止仍在运行的执行）。 */
+    var onMacroRemoved: ((Macro) -> Unit)? = null
+
+    /** 宏被禁用时回调（用于停止仍在运行的执行）。 */
+    var onMacroDisabled: ((Macro) -> Unit)? = null
+
     suspend fun load() = withContext(Dispatchers.IO) {
         val list = dir.listFiles { f -> f.extension == "json" }
             ?.mapNotNull { f ->
@@ -41,9 +47,11 @@ class MacroStore(private val context: Context) {
         val updated = macro.copy(modifiedAt = System.currentTimeMillis())
         _macros.value = _macros.value.filterNot { it.id == updated.id } + updated
         write(updated)
+        if (!updated.enabled) onMacroDisabled?.invoke(updated)
     }
 
     suspend fun delete(macro: Macro) {
+        onMacroRemoved?.invoke(macro)
         _macros.value = _macros.value.filterNot { it.id == macro.id }
         withContext(Dispatchers.IO) {
             File(dir, "${macro.id}.json").delete()

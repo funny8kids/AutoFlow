@@ -40,6 +40,8 @@ class AutoFlowApp : Application() {
             logs = LogRepository(this)
             engine = MacroEngine(this)
             triggers = TriggerManager(this, store, engine)
+            store.onMacroRemoved = { engine.cancel(it.id) }
+            store.onMacroDisabled = { engine.cancel(it.id) }
         }.onFailure {
             startupError = it.stackTraceToString()
             // 兜底：即使子系统初始化失败，也要保证字段可用

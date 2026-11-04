@@ -20,17 +20,55 @@ class MacroEngine(private val app: AutoFlowApp) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val executors = ActionExecutors(app)
 
+    /** 正在运行的执行：宏 id -> 该宏的运行上下文（同一宏可能被多次触发）。 */
+    private val running = java.util.concurrent.ConcurrentHashMap<String, MutableList<RunContext>>()
+
+    private val _runningIds = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+    val runningIds: kotlinx.coroutines.flow.StateFlow<Set<String>> = _runningIds
+
     fun run(macro: Macro, triggerLabel: String = "手动运行") {
-        scope.launch {
-            execute(macro, RunContext(macro, "manual", triggerLabel, globals = app.globals.snapshot().toMutableMap()))
-        }
+        launchTracked(macro, RunContext(macro, "manual", triggerLabel, globals = app.globals.snapshot().toMutableMap()))
     }
 
     fun runWith(macro: Macro, triggerType: String, triggerLabel: String) {
+        launchTracked(macro, RunContext(macro, triggerType, triggerLabel, globals = app.globals.snapshot().toMutableMap()))
+    }
+
+    private fun launchTracked(macro: Macro, ctx: RunContext) {
         scope.launch {
-            execute(macro, RunContext(macro, triggerType, triggerLabel, globals = app.globals.snapshot().toMutableMap()))
+            track(macro.id, ctx)
+            try {
+                execute(macro, ctx)
+            } finally {
+                untrack(macro.id, ctx)
+            }
         }
     }
+
+    private fun track(id: String, ctx: RunContext) {
+        running.computeIfAbsent(id) { java.util.Collections.synchronizedList(mutableListOf()) }.add(ctx)
+        _runningIds.value = running.filterValues { it.isNotEmpty() }.keys.toSet()
+    }
+
+    private fun untrack(id: String, ctx: RunContext) {
+        running[id]?.let { list ->
+            list.remove(ctx)
+            if (list.isEmpty()) running.remove(id)
+        }
+        _runningIds.value = running.filterValues { it.isNotEmpty() }.keys.toSet()
+    }
+
+    /** 停止某个宏的所有运行实例（删除宏、禁用宏时调用）。 */
+    fun cancel(macroId: String) {
+        running[macroId]?.toList()?.forEach { it.cancelled = true }
+    }
+
+    /** 停止全部正在运行的宏。 */
+    fun cancelAll() {
+        running.values.forEach { list -> list.toList().forEach { it.cancelled = true } }
+    }
+
+    fun isRunning(macroId: String): Boolean = running[macroId]?.isNotEmpty() == true
 
     suspend fun execute(macro: Macro, ctx: RunContext) = withContext(Dispatchers.Default) {
         if (!macro.enabled) return@withContext

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
@@ -90,6 +91,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val modelsLoading by vm.modelsLoading.collectAsStateWithLifecycle()
     val globalVars by vm.globalVars.collectAsStateWithLifecycle()
     val backupMsg by vm.backupMsg.collectAsStateWithLifecycle()
+    val runningIds by vm.runningIds.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf<Route>(Route.List) }
 
     AnimatedContent(
@@ -103,6 +105,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onOpen = { route = Route.Edit(it) },
                 onCreate = { route = Route.Edit(vm.newMacro()) },
                 onRun = { vm.run(it) },
+                onStop = { vm.stop(it) },
+                onStopAll = { vm.stopAll() },
+                runningIds = runningIds,
                 onToggle = { m, on -> vm.save(m.copy(enabled = on)) },
                 onDelete = { vm.delete(it) },
                 onLogs = { route = Route.Logs },
@@ -184,6 +189,9 @@ private fun MacroListScreen(
     onOpen: (Macro) -> Unit,
     onCreate: () -> Unit,
     onRun: (Macro) -> Unit,
+    onStop: (Macro) -> Unit,
+    onStopAll: () -> Unit,
+    runningIds: Set<String>,
     onToggle: (Macro, Boolean) -> Unit,
     onDelete: (Macro) -> Unit,
     onLogs: () -> Unit,
@@ -213,6 +221,11 @@ private fun MacroListScreen(
                     }
                 },
                 actions = {
+                    if (runningIds.isNotEmpty()) {
+                        IconButton(onClick = onStopAll) {
+                            Icon(Icons.Default.Close, contentDescription = "停止全部运行", tint = MaterialTheme.colorScheme.error)
+                        }
+                    }
                     IconButton(onClick = onAi) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = "AI 生成", tint = Brand.Secondary)
                     }
@@ -278,7 +291,9 @@ private fun MacroListScreen(
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "${macros.size} 个宏 · ${macros.count { it.enabled }} 个启用 · $blockCount 个动作块",
+                                "${macros.size} 个宏 · ${macros.count { it.enabled }} 个启用" +
+                                    (if (runningIds.isNotEmpty()) " · ${runningIds.size} 运行中" else "") +
+                                    " · $blockCount 个动作块",
                                 color = Color.White.copy(alpha = 0.92f),
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -358,7 +373,15 @@ private fun MacroListScreen(
                     }
                 }
                 items(filtered, key = { it.id }) { macro ->
-                    MacroCard(macro, onOpen, onRun, onToggle, onDelete)
+                    MacroCard(
+                        macro = macro,
+                        running = macro.id in runningIds,
+                        onOpen = onOpen,
+                        onRun = onRun,
+                        onStop = onStop,
+                        onToggle = onToggle,
+                        onDelete = onDelete,
+                    )
                 }
                 if (filtered.isEmpty()) {
                     item { EmptyHint("没有匹配的宏") }
@@ -411,8 +434,10 @@ private fun EmptyState(modifier: Modifier = Modifier, onAi: () -> Unit) {
 @Composable
 private fun MacroCard(
     macro: Macro,
+    running: Boolean,
     onOpen: (Macro) -> Unit,
     onRun: (Macro) -> Unit,
+    onStop: (Macro) -> Unit,
     onToggle: (Macro, Boolean) -> Unit,
     onDelete: (Macro) -> Unit,
 ) {
@@ -446,6 +471,7 @@ private fun MacroCard(
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (running) StatChip("运行中", MaterialTheme.colorScheme.error)
                 StatChip("${macro.triggers.size} 触发器", accent)
                 StatChip("${macro.actions.size} 动作", Brand.Secondary)
                 if (macro.constraints.isNotEmpty()) StatChip("${macro.constraints.size} 条件", Brand.Tertiary)
@@ -458,8 +484,14 @@ private fun MacroCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                IconButton(onClick = { onRun(macro) }) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "运行", tint = Brand.Secondary)
+                if (running) {
+                    IconButton(onClick = { onStop(macro) }) {
+                        Icon(Icons.Default.Close, contentDescription = "停止运行", tint = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    IconButton(onClick = { onRun(macro) }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "运行", tint = Brand.Secondary)
+                    }
                 }
                 IconButton(onClick = { onDelete(macro) }) {
                     Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
