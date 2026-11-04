@@ -135,7 +135,7 @@ class DeepSeekClient(private val settings: AiSettings) {
     // ---------------- 解析 ----------------
 
     private fun extractJson(raw: String): String {
-        val noFence = raw.replace(Regex("\\u0060"), "").trim()
+        val noFence = raw.replace("`", "").trim()
         val start = noFence.indexOf('{')
         val end = noFence.lastIndexOf('}')
         require(start >= 0 && end > start) { "AI 没有返回合法 JSON" }

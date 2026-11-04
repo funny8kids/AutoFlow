@@ -1329,19 +1329,42 @@ class ActionExecutors(private val app: AutoFlowApp) {
     }
 
     companion object {
-        private val MAGIC_LOCAL = Regex("\\{lv=([^}]+)}")
-        private val MAGIC_GLOBAL = Regex("\\{v=([^}]+)}")
-
         /**
-         * {lv=name} -> 局部变量；{v=name} -> 全局优先，找不到再回落到局部（兼容旧宏）。
+         * 替换魔法文本：{lv=name} 取局部变量，{v=name} 全局优先、回落局部。
+         *
+         * 注意：这里刻意不使用正则。Android 的 ICU 正则引擎不接受 "\{" 这类
+         * 多余转义（会抛 PatternSyntaxException），而 JVM 上的正则允许，
+         * 导致单元测试无法发现。手写解析在两种环境下行为一致。
          */
         fun magic(text: String, ctx: RunContext): String {
-            var s = MAGIC_LOCAL.replace(text) { ctx.locals[it.groupValues[1]] ?: "" }
-            s = MAGIC_GLOBAL.replace(s) { m ->
-                val n = m.groupValues[1]
-                ctx.globals[n] ?: ctx.locals[n] ?: ""
+            if (text.indexOf('{') < 0) return text
+            val out = StringBuilder(text.length + 16)
+            var i = 0
+            while (i < text.length) {
+                val ch = text[i]
+                if (ch == '{') {
+                    val end = text.indexOf('}', i + 1)
+                    if (end > i) {
+                        val token = text.substring(i + 1, end)
+                        when {
+                            token.startsWith("lv=") -> {
+                                out.append(ctx.locals[token.substring(3)] ?: "")
+                                i = end + 1
+                                continue
+                            }
+                            token.startsWith("v=") -> {
+                                val name = token.substring(2)
+                                out.append(ctx.globals[name] ?: ctx.locals[name] ?: "")
+                                i = end + 1
+                                continue
+                            }
+                        }
+                    }
+                }
+                out.append(ch)
+                i++
             }
-            return s
+            return out.toString()
         }
     }
 }
