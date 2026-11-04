@@ -13,8 +13,8 @@ android {
         applicationId = "com.autoflow.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 47
-        versionName = "2.23.0"
+        versionCode = 48
+        versionName = "2.24.0"
         vectorDrawables { useSupportLibrary = true }
     }
 

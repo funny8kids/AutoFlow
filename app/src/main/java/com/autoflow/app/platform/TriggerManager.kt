@@ -56,6 +56,7 @@ class TriggerManager(
     private var lastLocation: Pair<Double, Double>? = null
     private var callLogObserver: android.database.ContentObserver? = null
     private var mediaObservers: MutableList<android.database.ContentObserver> = mutableListOf()
+    private var mmsObserver: android.database.ContentObserver? = null
     private var rainActive = false
     private var lastUv: Double? = null
     private var lastCallId: Long = -1
@@ -79,6 +80,7 @@ class TriggerManager(
         ensureLocation(macros)
         ensureCallLog(macros)
         ensureMediaObservers(macros)
+        ensureMmsObserver(macros)
         app.logs.info("触发器", "已刷新：${macros.count { it.enabled }} 个启用宏")
     }
 
@@ -817,6 +819,30 @@ class TriggerManager(
     }
 
     fun currentForegroundPkg(): String? = lastForegroundPkg
+
+    /** MMS 观察者：监听 content://mms。 */
+    private fun ensureMmsObserver(macros: List<Macro>) {
+        val need = macros.any { m -> m.enabled && m.triggers.any { it.type == "mmsReceived" } }
+        if (need && mmsObserver == null) {
+            mmsObserver = object : android.database.ContentObserver(
+                android.os.Handler(android.os.Looper.getMainLooper()),
+            ) {
+                private var lastFire = 0L
+                override fun onChange(selfChange: Boolean) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastFire < 3_000L) return
+                    lastFire = now
+                    dispatch("mmsReceived", "收到彩信") { _ -> true }
+                }
+            }
+            app.contentResolver.registerContentObserver(
+                android.net.Uri.parse("content://mms"), true, mmsObserver!!,
+            )
+        } else if (!need && mmsObserver != null) {
+            runCatching { app.contentResolver.unregisterContentObserver(mmsObserver!!) }
+            mmsObserver = null
+        }
+    }
 
     /** 系统相库观察者：新照片 / 新视频。 */
     private fun ensureMediaObservers(macros: List<Macro>) {

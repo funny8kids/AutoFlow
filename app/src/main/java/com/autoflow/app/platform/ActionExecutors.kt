@@ -1215,6 +1215,99 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     app.logs.info(macro.name, "→ 调用宏「$name」")
                 } else app.logs.error(macro.name, "找不到宏：$name")
             }
+            "imageRoundCorners" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val radius = (p["radius"]?.toFloatOrNull() ?: 48f).coerceIn(4f, 400f)
+                    val out = android.graphics.Bitmap.createBitmap(
+                        src.width, src.height, android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                    val canvas = android.graphics.Canvas(out)
+                    val paint = android.graphics.Paint().apply { isAntiAlias = true }
+                    canvas.drawRoundRect(
+                        android.graphics.RectF(0f, 0f, src.width.toFloat(), src.height.toFloat()),
+                        radius, radius, paint,
+                    )
+                    paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+                    canvas.drawBitmap(src, 0f, 0f, paint)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "rounded.png" }).outputStream().use {
+                        out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    out.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "圆角失败: ${it.message}") }
+            }
+            "imageToGrayscale" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val out = android.graphics.Bitmap.createBitmap(
+                        src.width, src.height, android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                    val canvas = android.graphics.Canvas(out)
+                    val paint = android.graphics.Paint().apply {
+                        colorFilter = android.graphics.ColorMatrixColorFilter(
+                            android.graphics.ColorMatrix(
+                                floatArrayOf(
+                                    0f, 0f, 0f, 0f, 128f,
+                                    0f, 0f, 0f, 0f, 128f,
+                                    0f, 0f, 0f, 0f, 128f,
+                                    0f, 0f, 0f, 1f, 0f,
+                                ),
+                            ),
+                        )
+                    }
+                    canvas.drawBitmap(src, 0f, 0f, paint)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "gray.jpg" }).outputStream().use {
+                        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    out.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "灰度化失败: ${it.message}") }
+            }
+            "readContacts" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                        app, android.Manifest.permission.READ_CONTACTS,
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted) {
+                        app.logs.warn(macro.name, "需要通讯录权限")
+                        return@runCatching
+                    }
+                    val limit = (p["count"]?.toIntOrNull() ?: 10).coerceIn(1, 100)
+                    val out = StringBuilder()
+                    app.contentResolver.query(
+                        android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                        arrayOf(
+                            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER,
+                        ),
+                        null, null, null,
+                    )?.use { c ->
+                        while (c.moveToNext() && out.count { it == '|' } < limit) {
+                            if (out.isNotEmpty()) out.append("|")
+                            out.append("${c.getString(0) ?: ""}:${c.getString(1) ?: ""}")
+                        }
+                    }
+                    ctx.locals[p["toVar"].orEmpty()] = out.toString()
+                }.onFailure { app.logs.error(macro.name, "读取联系人失败: ${it.message}") }
+            }
+            "getWeatherToVar" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val lat = p["lat"]?.toDoubleOrNull()
+                    val lon = p["lon"]?.toDoubleOrNull()
+                    if (lat == null || lon == null) {
+                        app.logs.warn(macro.name, "需要纬度/经度参数")
+                        return@runCatching
+                    }
+                    val conn = java.net.URL(
+                        "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m",
+                    ).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout = 10_000
+                    val text = conn.inputStream.use { it.readBytes().decodeToString() }
+                    conn.disconnect()
+                    val temp = org.json.JSONObject(text).getJSONObject("current").getDouble("temperature_2m")
+                    ctx.locals[p["toVar"].orEmpty()] = "${temp}℃"
+                }.onFailure { app.logs.error(macro.name, "天气拉取失败: ${it.message}") }
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
