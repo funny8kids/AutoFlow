@@ -41,6 +41,11 @@ jobs:
           yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
+      - name: Run unit tests (Robolectric startup smoke)
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest --no-daemon
+
       - name: Build debug APK
         run: |
           chmod +x ./gradlew
