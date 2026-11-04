@@ -1,0 +1,70 @@
+<!doctype html><html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dsh-design" content="app">
+<title>编辑宏 · AutoFlow</title><link rel="stylesheet" href="tokens.css">
+</head><body><div class="screen">
+  <div class="toolbar">
+    <a class="ico" href="macros.html">‹</a>
+    <div style="flex:1"><h1 style="font-size:19px;margin:0">灯光闪烁</h1>
+      <div class="sub">双击电源键 · 已启用</div></div>
+    <div class="switch on"></div>
+    <a class="ico" href="macros.html">⋮</a>
+  </div>
+
+  <div class="banner">⚡ 该宏正在运行，第 3/5 次循环 <a class="stop" href="macros.html" style="margin-left:auto;color:#FFE0A8;text-decoration:none">停止</a></div>
+
+  <div class="sectcard">
+    <div class="secthead"><div class="t">触发器</div><div class="c">1</div><div class="sp"></div>
+      <a class="mini" href="add-action.html" title="粘贴">⧉</a>
+      <a class="mini" href="add-action.html" title="重排">⇅</a>
+      <a class="mini add" href="add-action.html" title="添加">＋</a></div>
+    <div class="entry"><div class="n">1</div>
+      <div class="body"><div class="k">电源键双击</div><div class="d">任意界面 · 立即触发</div></div>
+      <div class="grab">☰</div></div>
+  </div>
+  <div class="hint" style="margin:8px 20px">多个触发器之间是「或」：任一满足即执行。</div>
+
+  <div class="sectcard">
+    <div class="secthead"><div class="t">动作</div><div class="c">6</div><div class="sp"></div>
+      <a class="mini" href="add-action.html">⧉</a><a class="mini" href="add-action.html">⇅</a>
+      <a class="mini add" href="add-action.html">＋</a></div>
+    <div class="entry"><div class="n">1</div><div class="body"><div class="k">循环 5 次</div>
+      <div class="d">以下动作重复 5 遍</div></div><div class="grab">☰</div></div>
+    <div class="entry sub"><div class="n">2</div><div class="body"><div class="k">手电筒 开</div>
+      <div class="d">在循环内</div></div><div class="grab">☰</div></div>
+    <div class="entry sub"><div class="n">3</div><div class="body"><div class="k">等待 0.4 秒</div></div><div class="grab">☰</div></div>
+    <div class="entry sub"><div class="n">4</div><div class="body"><div class="k">手电筒 关</div></div><div class="grab">☰</div></div>
+    <div class="entry sub"><div class="n">5</div><div class="body"><div class="k">等待 0.4 秒</div></div><div class="grab">☰</div></div>
+    <div class="entry"><div class="n">6</div><div class="body"><div class="k">结束循环</div>
+      <div class="d">回到第 1 个动作</div></div><div class="grab">☰</div></div>
+  </div>
+
+  <div class="sectcard">
+    <div class="secthead"><div class="t">约束</div><div class="c">2</div><div class="sp"></div>
+      <div class="logic">全部满足 ▾</div></div>
+    <div class="secthead" style="padding-top:0"><div class="sp"></div>
+      <a class="mini" href="add-action.html">⧉</a><a class="mini" href="add-action.html">⇅</a>
+      <a class="mini add" href="add-action.html">＋</a></div>
+    <div class="entry"><div class="n">1</div><div class="body"><div class="k">屏幕已解锁</div>
+      <div class="d">设备处于解锁状态</div></div><div class="grab">☰</div></div>
+    <div class="entry"><div class="n">2</div><div class="body"><div class="k">电量高于 15%</div>
+      <div class="d">避免低电时闪烁</div></div><div class="grab">☰</div></div>
+  </div>
+
+  <div class="sectcard">
+    <div class="secthead"><div class="t">局部变量</div><div class="c">0</div><div class="sp"></div>
+      <a class="mini add" href="add-action.html">＋</a></div>
+    <div class="entry" style="padding:16px 14px"><div class="body"><div class="d">没有局部变量，可在动作里用「设置变量」自动创建</div></div></div>
+  </div>
+
+  <div class="sectcard">
+    <div class="secthead"><div class="t">AI 助手</div><div class="sp"></div><a class="mini add" href="ai.html">✦</a></div>
+    <div class="entry"><div class="body"><div class="k">用一句话修改这个宏</div>
+      <div class="d">例：改成闪 8 次，间隔 0.2 秒</div></div><div class="grab">›</div></div>
+  </div>
+
+  <div class="bar" style="display:flex;gap:10px">
+    <a class="btn ghost" href="macros.html" style="flex:1">■ 停止</a>
+    <a class="btn primary" href="macros.html" style="flex:1.4">▶ 立即运行</a>
+  </div>
+</div></body></html>
