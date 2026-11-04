@@ -801,6 +801,55 @@ class ActionExecutors(private val app: AutoFlowApp) {
                 val stat = android.os.StatFs(app.filesDir.path)
                 (stat.totalBytes / 1024 / 1024).toString()
             }.getOrDefault("0")
+            // ---- 日历 ----
+            "addCalendarEvent" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val title = magic(p["title"].orEmpty(), ctx)
+                    val start = System.currentTimeMillis() +
+                        (p["minutesFromNow"]?.toLongOrNull() ?: 10L).coerceIn(0L, 100_000L) * 60_000L
+                    val duration = (p["durationMinutes"]?.toLongOrNull() ?: 30L).coerceIn(1L, 24 * 60L) * 60_000L
+                    val cv = android.content.ContentValues().apply {
+                        put(android.provider.CalendarContract.Events.CALENDAR_ID, 1)
+                        put(android.provider.CalendarContract.Events.TITLE, title)
+                        put(android.provider.CalendarContract.Events.DTSTART, start)
+                        put(android.provider.CalendarContract.Events.DTEND, start + duration)
+                        put(
+                            android.provider.CalendarContract.Events.EVENT_TIMEZONE,
+                            java.util.TimeZone.getDefault().id,
+                        )
+                    }
+                    val uri = app.contentResolver.insert(android.provider.CalendarContract.Events.CONTENT_URI, cv)
+                    app.logs.info(macro.name, "日历事件已创建: $title")
+                }.onFailure { app.logs.error(macro.name, "创建日历事件失败: ${it.message}") }
+            }
+            "calendarQuery" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val now = System.currentTimeMillis()
+                    val end = now + (p["minutesAhead"]?.toLongOrNull() ?: 60L).coerceIn(1L, 10_080L) * 60_000L
+                    val uri = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon()
+                        .appendPath(now.toString())
+                        .appendPath(end.toString())
+                        .build()
+                    val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US)
+                    val out = StringBuilder()
+                    app.contentResolver.query(
+                        uri,
+                        arrayOf(
+                            android.provider.CalendarContract.Instances.TITLE,
+                            android.provider.CalendarContract.Instances.BEGIN,
+                        ),
+                        null, null, null,
+                    )?.use { c ->
+                        while (c.moveToNext()) {
+                            if (out.isNotEmpty()) out.append("|")
+                            out.append(c.getString(0) ?: "未命名")
+                                .append("@")
+                                .append(fmt.format(java.util.Date(c.getLong(1))))
+                        }
+                    }
+                    ctx.locals[p["toVar"].orEmpty()] = out.toString()
+                }.onFailure { app.logs.error(macro.name, "查询日程失败: ${it.message}") }
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {

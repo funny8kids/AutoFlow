@@ -580,6 +580,12 @@ object Registry {
             listOf(ParamSpec("toVar", "结果变量", default = "health"))),
         ItemSpec("getStorageTotal", "总存储空间", "取总容量（MB）到变量", Icons.Default.Cloud, "变量",
             listOf(ParamSpec("toVar", "结果变量", default = "storage_total"))),
+        ItemSpec("addCalendarEvent", "新建日历事件", "在系统日历里创建一个事件", Icons.Default.Schedule, "系统",
+            listOf(ParamSpec("title", "事件标题"), ParamSpec("minutesFromNow", "多少分钟后开始", ParamKind.NUMBER, "10"),
+                ParamSpec("durationMinutes", "持续分钟", ParamKind.NUMBER, "30"))),
+        ItemSpec("calendarQuery", "查询日程", "查未来 N 分钟内的日历事件", Icons.Default.Schedule, "系统",
+            listOf(ParamSpec("minutesAhead", "往前看多少分钟", ParamKind.NUMBER, "60"),
+                ParamSpec("toVar", "结果变量", default = "events"))),
         // ---- 系统 / 界面扩展 ----
         ItemSpec("setWallpaper", "设置壁纸", "把图片设为壁纸", Icons.Default.Star, "界面",
             listOf(ParamSpec("file", "图片文件名"))),

@@ -47,7 +47,7 @@
 | 宏详情长按菜单 | 禁用/克隆/分享/测试动作/日志级别 | 小 |
 | 约束 AND/OR 切换 | MacroDroid 的 constraintAndOrSpinner；引擎需支持 OR 逻辑 | 小 |
 | 宏排序/拖拽 | 列表内手动排序 | 中 |
-| 日历触发/动作 | READ_CALENDAR 已有权限，缺事件读写 | 中 |
+| ~~日历触发/动作~~ | ✅ v2.13.0（calendarEvent 触发 + 新建事件 + 查询日程） |
 | 天气触发 | 需位置 + 天气源 | 中 |
 | WiFi 详细触发（SSID 列表/BSSID） | 已有单个 SSID，缺列表 | 小 |
 | 通知栏快捷回复 | Notification bars | 中 |
