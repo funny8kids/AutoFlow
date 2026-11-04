@@ -46,6 +46,7 @@ class ActionExecutors(private val app: AutoFlowApp) {
 
     private var torchOn = false
     private var mediaPlayer: android.media.MediaPlayer? = null
+    private var wifiLockRef: android.net.wifi.WifiManager.WifiLock? = null
     private var tts: TextToSpeech? = null
 
     init {
@@ -990,6 +991,75 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     },
                 )
             }.onFailure { app.logs.error(macro.name, "打开文件失败: ${it.message}") }
+            "saveImageToGallery" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = File(app.filesDir, p["file"].orEmpty())
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, src.name)
+                            put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                            put(
+                                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                                android.os.Environment.DIRECTORY_PICTURES,
+                            )
+                        }
+                        val uri = app.contentResolver.insert(
+                            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
+                        )
+                        uri?.let { u ->
+                            app.contentResolver.openOutputStream(u)?.use { os ->
+                                src.inputStream().use { it.copyTo(os) }
+                            }
+                        }
+                    } else {
+                        @Suppress("DEPRECATION")
+                        android.provider.MediaStore.Images.Media.insertImage(
+                            app.contentResolver, src.absolutePath, src.nameWithoutExtension, "AutoFlow",
+                        )
+                    }
+                    app.logs.info(macro.name, "已存入相册: ${src.name}")
+                }.onFailure { app.logs.error(macro.name, "存入相册失败: ${it.message}") }
+            }
+            "scanMediaFile" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(app.filesDir, p["file"].orEmpty())
+                    android.media.MediaScannerConnection.scanFile(
+                        app, arrayOf(file.absolutePath), null, null,
+                    )
+                    app.logs.info(macro.name, "已请求扫描: ${file.name}")
+                }
+            }
+            "setRingtoneFromFile" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(app.filesDir, p["file"].orEmpty())
+                    android.media.MediaScannerConnection.scanFile(
+                        app, arrayOf(file.absolutePath), arrayOf("audio/*"),
+                    ) { _, uri ->
+                        runCatching {
+                            android.media.RingtoneManager.setActualDefaultRingtoneUri(
+                                app, android.media.RingtoneManager.TYPE_RINGTONE, uri,
+                            )
+                            app.logs.info(macro.name, "默认铃声已设置")
+                        }.onFailure { app.logs.error(macro.name, "设置铃声失败: ${it.message}") }
+                    }
+                }
+            }
+            "wifiLock" -> runCatching {
+                val wm = app.applicationContext.getSystemService(WifiManager::class.java)
+                if ((p["state"] ?: "on") == "on") {
+                    if (wifiLockRef == null) {
+                        wifiLockRef = wm?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "autoflow:wifi")?.apply {
+                            setReferenceCounted(false)
+                            acquire()
+                        }
+                        app.logs.info(macro.name, "WiFi 锁已持有")
+                    }
+                } else {
+                    wifiLockRef?.release()
+                    wifiLockRef = null
+                    app.logs.info(macro.name, "WiFi 锁已释放")
+                }
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
@@ -1317,6 +1387,14 @@ class ActionExecutors(private val app: AutoFlowApp) {
             val am = app.getSystemService(android.app.ActivityManager::class.java)
             am.runningAppProcesses?.any { it.processName == c.params["package"].orEmpty() } != true
         }.getOrDefault(true)
+        "batteryInRange" -> {
+            val lv = batteryLevel()
+            lv >= (c.params["min"]?.toIntOrNull() ?: 20) && lv <= (c.params["max"]?.toIntOrNull() ?: 80)
+        }
+        "volumeInRange" -> {
+            val v = mediaVolume()
+            v >= (c.params["min"]?.toIntOrNull() ?: 2) && v <= (c.params["max"]?.toIntOrNull() ?: 12)
+        }
         else -> true
     }
 

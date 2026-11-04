@@ -232,6 +232,8 @@ object Registry {
         ItemSpec("dndChange", "勿扰模式开关", "勿扰模式开启或关闭时触发", Icons.Default.Notifications, "系统",
             listOf(ParamSpec("state", "状态", ParamKind.CHOICE, "on",
                 listOf(Choice("on", "开启"), Choice("off", "关闭"))))),
+        ItemSpec("newPhotoTaken", "拍了新照片", "系统相库新增照片时触发", Icons.Default.Star, "系统"),
+        ItemSpec("newVideoTaken", "录了新视频", "系统相库新增视频时触发", Icons.Default.Star, "系统"),
         // ---- 传感器 ----
         ItemSpec("shake", "摇晃设备", "快速摇晃手机时触发", Icons.Default.Vibration, "传感器",
             listOf(ParamSpec("strength", "灵敏度（1-3）", ParamKind.NUMBER, "2"))),
@@ -655,6 +657,15 @@ object Registry {
                 ParamSpec("level", "音量", ParamKind.NUMBER, "5"))),
         ItemSpec("openFile", "打开文件", "用系统查看器打开私有文件", Icons.Default.ContentCopy, "文件",
             listOf(ParamSpec("file", "文件名"))),
+        ItemSpec("saveImageToGallery", "图片存入相册", "把私有图片文件保存到系统相册", Icons.Default.Star, "文件",
+            listOf(ParamSpec("file", "图片文件名"))),
+        ItemSpec("scanMediaFile", "扫描媒体文件", "让系统相库索引指定文件", Icons.Default.ContentCopy, "文件",
+            listOf(ParamSpec("file", "文件名"))),
+        ItemSpec("setRingtoneFromFile", "设为铃声", "把音频文件设为默认铃声（需写入设置权限）", Icons.Default.MusicNote, "文件",
+            listOf(ParamSpec("file", "音频文件名"))),
+        ItemSpec("wifiLock", "WiFi 锁", "持有/释放高性能 WiFi 锁", Icons.Default.Wifi, "网络",
+            listOf(ParamSpec("state", "操作", ParamKind.CHOICE, "on",
+                listOf(Choice("on", "持有"), Choice("off", "释放"))))),
         // ---- 系统 / 界面扩展 ----
         ItemSpec("setWallpaper", "设置壁纸", "把图片设为壁纸", Icons.Default.Star, "界面",
             listOf(ParamSpec("file", "图片文件名"))),
@@ -831,6 +842,10 @@ object Registry {
         ItemSpec("batteryNotCharging", "未在充电", "仅未连接电源时执行", Icons.Default.BatteryChargingFull, "电源"),
         ItemSpec("appNotRunning", "应用未运行", "指定应用进程不存在时执行", Icons.Default.OpenInNew, "应用",
             listOf(ParamSpec("package", "包名"))),
+        ItemSpec("batteryInRange", "电量区间", "电量在最小与最大之间才执行", Icons.Default.BatteryChargingFull, "电源",
+            listOf(ParamSpec("min", "最低 %", ParamKind.NUMBER, "20"), ParamSpec("max", "最高 %", ParamKind.NUMBER, "80"))),
+        ItemSpec("volumeInRange", "音量区间", "媒体音量在最小与最大之间才执行", Icons.Default.VolumeUp, "设备",
+            listOf(ParamSpec("min", "最低", ParamKind.NUMBER, "2"), ParamSpec("max", "最高", ParamKind.NUMBER, "12"))),
     )
 
     fun trigger(type: String): ItemSpec? = triggers.firstOrNull { it.type == type }

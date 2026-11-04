@@ -55,6 +55,7 @@ class TriggerManager(
     private var locationListener: android.location.LocationListener? = null
     private var lastLocation: Pair<Double, Double>? = null
     private var callLogObserver: android.database.ContentObserver? = null
+    private var mediaObservers: MutableList<android.database.ContentObserver> = mutableListOf()
     private var rainActive = false
     private var lastUv: Double? = null
     private var lastCallId: Long = -1
@@ -77,6 +78,7 @@ class TriggerManager(
         ensureSensors(macros)
         ensureLocation(macros)
         ensureCallLog(macros)
+        ensureMediaObservers(macros)
         app.logs.info("触发器", "已刷新：${macros.count { it.enabled }} 个启用宏")
     }
 
@@ -814,6 +816,49 @@ class TriggerManager(
     }
 
     fun currentForegroundPkg(): String? = lastForegroundPkg
+
+    /** 系统相库观察者：新照片 / 新视频。 */
+    private fun ensureMediaObservers(macros: List<Macro>) {
+        val photo = macros.any { m -> m.enabled && m.triggers.any { it.type == "newPhotoTaken" } }
+        val video = macros.any { m -> m.enabled && m.triggers.any { it.type == "newVideoTaken" } }
+        val need = photo || video
+        if (need && mediaObservers.isEmpty()) {
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            fun make(kind: String, uri: android.net.Uri): android.database.ContentObserver {
+                return object : android.database.ContentObserver(handler) {
+                    private var lastFire = 0L
+                    override fun onChange(selfChange: Boolean) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastFire < 3_000L) return
+                        lastFire = now
+                        dispatch(
+                            if (kind == "photo") "newPhotoTaken" else "newVideoTaken",
+                            if (kind == "photo") "拍了新照片" else "录了新视频",
+                        ) { _ -> true }
+                    }
+                }
+            }
+            if (photo) {
+                make("photo", android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI).let {
+                    mediaObservers.add(it)
+                    app.contentResolver.registerContentObserver(
+                        android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, it,
+                    )
+                }
+            }
+            if (video) {
+                make("video", android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI).let {
+                    mediaObservers.add(it)
+                    app.contentResolver.registerContentObserver(
+                        android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, it,
+                    )
+                }
+            }
+        } else if (!need && mediaObservers.isNotEmpty()) {
+            mediaObservers.forEach { runCatching { app.contentResolver.unregisterContentObserver(it) } }
+            mediaObservers.clear()
+        }
+    }
 
     fun onWeatherPrecip(precipMm: Double) {
         if (precipMm > 0.0 && !rainActive) {
