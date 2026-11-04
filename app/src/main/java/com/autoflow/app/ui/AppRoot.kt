@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,6 +73,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.autoflow.app.core.LogEntry
 import com.autoflow.app.core.Macro
 import com.autoflow.app.core.Registry
+import com.autoflow.app.core.Templates
 
 private sealed interface Route {
     data object List : Route
@@ -83,6 +85,7 @@ private sealed interface Route {
     data object Quick : Route
     data object Blocks : Route
     data object Settings : Route
+    data object Templates : Route
 }
 
 @Composable
@@ -129,6 +132,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onBlocks = { route = Route.Blocks },
                 blockCount = blocks.size,
                 onSettings = { route = Route.Settings },
+                onTemplates = { route = Route.Templates },
             )
             is Route.Edit -> MacroEditorScreen(
                 initial = screen.macro,
@@ -179,6 +183,14 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onMessage = { vm.setBackupMessage(it) },
                 onBack = { route = Route.List },
             )
+            is Route.Templates -> TemplatesScreen(
+                installedNames = macros.map { it.name }.toSet(),
+                onInstall = { info ->
+                    vm.save(info.build())
+                    route = Route.List
+                },
+                onBack = { route = Route.List },
+            )
             is Route.Settings -> SettingsScreen(
                 initialKey = vm.aiApiKey,
                 initialBaseUrl = vm.aiBaseUrl,
@@ -214,6 +226,7 @@ private fun MacroListScreen(
     onBlocks: () -> Unit,
     blockCount: Int,
     onSettings: () -> Unit,
+    onTemplates: () -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -238,6 +251,9 @@ private fun MacroListScreen(
                         IconButton(onClick = onStopAll) {
                             Icon(Icons.Default.Close, contentDescription = "停止全部运行", tint = MaterialTheme.colorScheme.error)
                         }
+                    }
+                    IconButton(onClick = onTemplates) {
+                        Icon(Icons.Default.Add, contentDescription = "模板库", tint = Brand.Primary)
                     }
                     IconButton(onClick = onAi) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = "AI 生成", tint = Brand.Secondary)
@@ -268,7 +284,7 @@ private fun MacroListScreen(
         },
     ) { padding ->
         if (macros.isEmpty()) {
-            EmptyState(Modifier.padding(padding), onAi)
+            EmptyState(Modifier.padding(padding), onAi, onTemplates)
         } else {
             var query by remember { mutableStateOf("") }
             var category by remember { mutableStateOf("全部") }
@@ -405,7 +421,11 @@ private fun MacroListScreen(
 }
 
 @Composable
-private fun EmptyState(modifier: Modifier = Modifier, onAi: () -> Unit) {
+private fun EmptyState(
+    modifier: Modifier = Modifier,
+    onAi: () -> Unit,
+    onTemplates: () -> Unit,
+) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -428,6 +448,28 @@ private fun EmptyState(modifier: Modifier = Modifier, onAi: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(18.dp))
+            Card(
+                shape = CardShape,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                ),
+                border = BorderStroke(1.dp, Brand.Primary.copy(alpha = 0.5f)),
+                modifier = Modifier.clickable { onTemplates() },
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, contentDescription = null, tint = Brand.Primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text("${Templates.all.size} 个内置模板", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "手电筒闪烁 · 睡前静音 · 到公司静音 …",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
             Card(
                 shape = CardShape,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -537,7 +579,7 @@ private fun LogsScreen(logs: List<LogEntry>, onBack: () -> Unit, onClear: () -> 
         },
     ) { padding ->
         if (logs.isEmpty()) {
-            EmptyState(Modifier.padding(padding), onAi = {})
+            EmptyState(Modifier.padding(padding), onAi = {}, onTemplates = {})
         } else {
             LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
