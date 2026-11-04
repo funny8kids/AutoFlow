@@ -54,6 +54,8 @@ class TriggerManager(
     private val sunFired = mutableSetOf<String>()
     private var locationListener: android.location.LocationListener? = null
     private var lastLocation: Pair<Double, Double>? = null
+    private var callLogObserver: android.database.ContentObserver? = null
+    private var lastCallId: Long = -1
     private var lastBrightness = -1
     private var lastVolume = -1
     private val sensorManager by lazy { app.getSystemService(SensorManager::class.java) }
@@ -72,6 +74,7 @@ class TriggerManager(
         ensureGenericBroadcast(macros)
         ensureSensors(macros)
         ensureLocation(macros)
+        ensureCallLog(macros)
         app.logs.info("触发器", "已刷新：${macros.count { it.enabled }} 个启用宏")
     }
 
@@ -809,6 +812,65 @@ class TriggerManager(
     }
 
     fun currentForegroundPkg(): String? = lastForegroundPkg
+
+    fun onAirQuality(aqi: Int) {
+        dispatch("airQuality", "AQI $aqi") { t ->
+            val threshold = t.params["aqi"]?.toIntOrNull() ?: 100
+            if ((t.params["direction"] ?: "above") == "above") aqi >= threshold else aqi <= threshold
+        }
+    }
+
+    /** 通话记录观察者：未接来电 / 拨出电话（需 READ_CALL_LOG）。 */
+    private fun ensureCallLog(macros: List<Macro>) {
+        val need = macros.any { m ->
+            m.enabled && m.triggers.any { it.type == "callMissed" || it.type == "callOutgoing" }
+        }
+        if (need && callLogObserver == null) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                app, android.Manifest.permission.READ_CALL_LOG,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) return
+            callLogObserver = object : android.database.ContentObserver(
+                android.os.Handler(android.os.Looper.getMainLooper()),
+            ) {
+                override fun onChange(selfChange: Boolean) {
+                    runCatching {
+                        app.contentResolver.query(
+                            android.provider.CallLog.Calls.CONTENT_URI,
+                            arrayOf(
+                                android.provider.CallLog.Calls._ID,
+                                android.provider.CallLog.Calls.TYPE,
+                                android.provider.CallLog.Calls.NUMBER,
+                            ),
+                            null, null,
+                            android.provider.CallLog.Calls.DATE + " DESC",
+                        )?.use { cur ->
+                            if (cur.moveToFirst()) {
+                                val id = cur.getLong(0)
+                                val type = cur.getInt(1)
+                                val number = cur.getString(2) ?: ""
+                                if (id != lastCallId) {
+                                    lastCallId = id
+                                    when (type) {
+                                        android.provider.CallLog.Calls.MISSED_TYPE ->
+                                            dispatch("callMissed", "未接来电 $number") { _ -> true }
+                                        android.provider.CallLog.Calls.OUTGOING_TYPE ->
+                                            dispatch("callOutgoing", "拨出电话 $number") { _ -> true }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            app.contentResolver.registerContentObserver(
+                android.provider.CallLog.Calls.CONTENT_URI, true, callLogObserver!!,
+            )
+        } else if (!need && callLogObserver != null) {
+            runCatching { app.contentResolver.unregisterContentObserver(callLogObserver!!) }
+            callLogObserver = null
+        }
+    }
 
     fun onWeatherChange(tempCelsius: Double, previous: Double) {
         dispatch("weatherChange", "气温 $previous → $tempCelsius ℃") { t ->

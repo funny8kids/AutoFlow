@@ -870,6 +870,44 @@ class ActionExecutors(private val app: AutoFlowApp) {
                 shellPrivileged(macro.name, "settings put system screen_brightness ${percent * 255 / 100}")
             }
             "killBackgroundApp" -> shellPrivileged(macro.name, "am force-stop ${p["package"].orEmpty()}")
+            "getExternalIp" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val conn = java.net.URL("https://api.ipify.org").openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 8_000
+                    conn.readTimeout = 8_000
+                    val text = conn.inputStream.use { it.readBytes().decodeToString() }
+                    conn.disconnect()
+                    ctx.locals[p["toVar"].orEmpty()] = text.trim()
+                    app.logs.info(macro.name, "外网 IP: ${text.trim()}")
+                }.onFailure { app.logs.error(macro.name, "获取外网 IP 失败: ${it.message}") }
+            }
+            "getWifiSpeed" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                @Suppress("DEPRECATION")
+                app.applicationContext.getSystemService(WifiManager::class.java)
+                    .connectionInfo?.linkSpeed?.toString().orEmpty()
+            }.getOrDefault("")
+            "batterySaverToggle" -> {
+                val state = p["state"] ?: "toggle"
+                val cmd = when (state) {
+                    "on" -> "settings put global low_power 1"
+                    "off" -> "settings put global low_power 0"
+                    else -> "cur=\$(settings get global low_power); if [ \"\$cur\" = \"1\" ]; then settings put global low_power 0; else settings put global low_power 1; fi"
+                }
+                shellPrivileged(macro.name, cmd)
+            }
+            "dataToggle" -> {
+                val s = p["state"] ?: "toggle"
+                shellPrivileged(macro.name, if (s == "toggle") "svc data toggle" else "svc data " + if (s == "on") "enable" else "disable")
+            }
+            "locationToggle" -> {
+                val s = p["state"] ?: "toggle"
+                val cmd = when (s) {
+                    "on" -> "settings put secure location_mode 3"
+                    "off" -> "settings put secure location_mode 0"
+                    else -> "cur=\$(settings get secure location_mode); if [ \"\$cur\" != \"0\" ]; then settings put secure location_mode 0; else settings put secure location_mode 3; fi"
+                }
+                shellPrivileged(macro.name, cmd)
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
@@ -1129,6 +1167,27 @@ class ActionExecutors(private val app: AutoFlowApp) {
             val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return@runCatching true
             !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
         }.getOrDefault(true)
+        "timeBefore", "timeAfter" -> {
+            val parts = c.params["time"].orEmpty().split(":")
+            val target = (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 60 + (parts.getOrNull(1)?.toIntOrNull() ?: 0)
+            val cal = java.util.Calendar.getInstance()
+            val now = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+            if (c.type == "timeBefore") now < target else now >= target
+        }
+        "wifi5gBand" -> runCatching {
+            @Suppress("DEPRECATION")
+            app.applicationContext.getSystemService(WifiManager::class.java)
+                .connectionInfo?.frequency?.let { it >= 4900 } ?: false
+        }.getOrDefault(false)
+        "batteryTemperatureBelow" -> batteryTempC() < (c.params["celsius"]?.toDoubleOrNull() ?: 40.0)
+        "storageAbove" -> runCatching {
+            val stat = android.os.StatFs(app.filesDir.path)
+            (stat.availableBytes / 1024 / 1024) > (c.params["mb"]?.toLongOrNull() ?: 1024L)
+        }.getOrDefault(false)
+        "headsetConnected" -> runCatching {
+            val am = app.getSystemService(AudioManager::class.java)
+            am.isWiredHeadsetOn || am.isBluetoothScoOn || am.isBluetoothA2dpOn
+        }.getOrDefault(false)
         else -> true
     }
 

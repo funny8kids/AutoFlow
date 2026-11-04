@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
         wanted += Manifest.permission.READ_SMS
         wanted += Manifest.permission.READ_CALENDAR
         wanted += Manifest.permission.ACCESS_COARSE_LOCATION
+        wanted += Manifest.permission.READ_CALL_LOG
         wanted += Manifest.permission.READ_PHONE_STATE
         val missing = wanted.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED

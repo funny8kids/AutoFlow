@@ -33,6 +33,7 @@ class AutoFlowService : Service() {
             runCatching { pollCalendar() }
             runCatching { pollDataUsed() }
             runCatching { pollWeather() }
+            runCatching { pollAirQuality() }
             handler.postDelayed(this, 3000)
         }
     }
@@ -127,6 +128,7 @@ class AutoFlowService : Service() {
     private var weatherLastPoll = 0L
     private var lastWeatherTemp: Double? = null
     private var lastWeatherKey = ""
+    private var airLastPoll = 0L
 
     private fun pollCalendar() {
         val now = System.currentTimeMillis()
@@ -206,6 +208,32 @@ class AutoFlowService : Service() {
             lastWeatherTemp = temp
             lastWeatherKey = key
         }.onFailure { app.logs.warn("AutoFlowService", "天气拉取失败: ${it.message}") }
+    }
+
+    /** 空气质量轮询（Open-Meteo air-quality），30 分钟一次。 */
+    private fun pollAirQuality() {
+        val now = System.currentTimeMillis()
+        if (now - airLastPoll < 30 * 60_000L) return
+        airLastPoll = now
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val macro = app.store.macros.value.firstOrNull { m ->
+            m.enabled && m.triggers.any { it.type == "airQuality" }
+        } ?: return
+        val t = macro.triggers.first { it.type == "airQuality" }
+        val lat = t.params["lat"]?.toDoubleOrNull()
+        val lon = t.params["lon"]?.toDoubleOrNull()
+        if (lat == null || lon == null) return
+        runCatching {
+            val conn = java.net.URL(
+                "https://api.open-meteo.com/v1/air-quality?latitude=$lat&longitude=$lon&current=us_aqi",
+            ).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            val text = conn.inputStream.use { it.readBytes().decodeToString() }
+            conn.disconnect()
+            val aqi = org.json.JSONObject(text).getJSONObject("current").getInt("us_aqi")
+            app.triggers.onAirQuality(aqi)
+        }.onFailure { app.logs.warn("AutoFlowService", "空气质量拉取失败: ${it.message}") }
     }
 
     private fun pollMusic() {
