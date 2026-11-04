@@ -86,8 +86,18 @@ fun AutoFlowTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
+    val dark = when (ThemeSettings.darkMode) {
+        "on" -> true
+        "off" -> false
+        else -> darkTheme
+    }
+    val scheme = if (dark) {
+        if (ThemeSettings.amoled) {
+            DarkScheme.copy(background = Color.Black, surface = Color(0xFF0A0A0A))
+        } else DarkScheme
+    } else LightScheme
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkScheme else LightScheme,
+        colorScheme = scheme,
         typography = AppTypography,
         content = content,
     )

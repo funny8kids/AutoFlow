@@ -34,6 +34,7 @@ class AutoFlowApp : Application() {
         super.onCreate()
         instance = this
         installCrashLogger()
+        com.autoflow.app.ui.ThemeSettings.init(this)
         runCatching {
             store = MacroStore(this)
             globals = GlobalVarStore(this)

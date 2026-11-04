@@ -1,5 +1,6 @@
 package com.autoflow.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -91,7 +92,16 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("AI 设置", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Column {
+                        Text("设置", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "外观 · 权限 · 数据 · AI",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -112,6 +122,61 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             val context = LocalContext.current
+            // ---- 外观 ----
+            Text("外观", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("深色模式", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("system" to "跟系统", "on" to "深色", "off" to "浅色").forEach { (value, label) ->
+                            FilterChip(
+                                selected = ThemeSettings.darkMode == value,
+                                onClick = { ThemeSettings.setDarkMode(context, value) },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("AMOLED 纯黑", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "深色模式下使用纯黑背景",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        androidx.compose.material3.Switch(
+                            checked = ThemeSettings.amoled,
+                            onCheckedChange = { ThemeSettings.setAmoled(context, it) },
+                        )
+                    }
+                }
+            }
+
+            // ---- 数据 ----
+            Text("数据", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onOpenBackup() }.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("备份与导出", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "AES-GCM 加密 · 全部宏与变量",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // ---- 权限 ----
+            Text("权限与保活", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
             val a11yOn = remember {
                 AutoAccessibilityService.isConnected() || AutoAccessibilityService.isEnabled(context)
             }
