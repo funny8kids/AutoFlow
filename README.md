@@ -89,6 +89,21 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 # 产物：app/build/outputs/apk/debug/app-debug.apk
 ```
 
+## ✅ 测试
+
+CI 在打包前先跑 JVM 测试（Robolectric），失败即阻断发布：
+
+| 测试 | 覆盖 |
+|---|---|
+| `StartupTest` | Application 初始化、MainActivity 启动（Compose 组合） |
+| `UiSmokeTest` | 宏编辑器 / 快捷面板 / 动作块 / 全局变量 / 备份 / 设置 / AI 页面渲染 |
+| `EngineTest` | if、loop、breakLoop、变量读写 |
+| `RegistrySanityTest` | 100+161+64 条目的 type 唯一、名称非空、参数键不重复 |
+
+```bash
+./gradlew testDebugUnitTest
+```
+
 ## 🏗️ 架构
 
 ```
