@@ -832,6 +832,18 @@ class TriggerManager(
         }
     }
 
+    fun onLocationServiceChange(on: Boolean) {
+        dispatch("locationServiceChange", if (on) "定位已开启" else "定位已关闭") { t ->
+            (t.params["state"] ?: "on") == if (on) "on" else "off"
+        }
+    }
+
+    fun onDndChange(on: Boolean) {
+        dispatch("dndChange", if (on) "勿扰已开启" else "勿扰已关闭") { t ->
+            (t.params["state"] ?: "on") == if (on) "on" else "off"
+        }
+    }
+
     fun onAirQuality(aqi: Int) {
         dispatch("airQuality", "AQI $aqi") { t ->
             val threshold = t.params["aqi"]?.toIntOrNull() ?: 100

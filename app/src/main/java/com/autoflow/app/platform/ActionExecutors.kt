@@ -955,6 +955,41 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
             }
+            "clearAppCache" -> shellPrivileged(macro.name, "pm trim-caches 999999999999999")
+            "uninstallSilent" -> shellPrivileged(macro.name, "pm uninstall ${p["package"].orEmpty()}")
+            "grantPermission" -> shellPrivileged(
+                macro.name,
+                "pm grant ${p["package"].orEmpty()} ${p["permission"].orEmpty()}",
+            )
+            "rebootRecovery" -> shellPrivileged(macro.name, "svc reboot recovery")
+            "volumeStream" -> runCatching {
+                val am = app.getSystemService(AudioManager::class.java)
+                val stream = when (p["stream"] ?: "media") {
+                    "ring" -> AudioManager.STREAM_RING
+                    "alarm" -> AudioManager.STREAM_ALARM
+                    "notification" -> AudioManager.STREAM_NOTIFICATION
+                    else -> AudioManager.STREAM_MUSIC
+                }
+                val level = (p["level"]?.toIntOrNull() ?: 5).coerceIn(0, am.getStreamMaxVolume(stream))
+                am.setStreamVolume(stream, level, 0)
+            }
+            "openFile" -> runCatching {
+                val file = File(app.filesDir, p["file"].orEmpty())
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    app, app.packageName + ".fileprovider", file,
+                )
+                val mime = app.contentResolver.getType(uri) ?: "*/*"
+                app.startActivity(
+                    Intent(Intent.ACTION_VIEW).apply {
+                        data = uri
+                        type = mime
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_ACTIVITY_NEW_TASK,
+                        )
+                    },
+                )
+            }.onFailure { app.logs.error(macro.name, "打开文件失败: ${it.message}") }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
@@ -1254,6 +1289,34 @@ class ActionExecutors(private val app: AutoFlowApp) {
         "isWorkProfile" -> runCatching {
             app.getSystemService(android.os.UserManager::class.java)?.isManagedProfile == true
         }.getOrDefault(false)
+        "dndOn" -> runCatching {
+            val f = app.getSystemService(NotificationManager::class.java).currentInterruptionFilter
+            f != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
+                f != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+        }.getOrDefault(false)
+        "dndOff" -> runCatching {
+            val f = app.getSystemService(NotificationManager::class.java).currentInterruptionFilter
+            f == android.app.NotificationManager.INTERRUPTION_FILTER_ALL ||
+                f == android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+        }.getOrDefault(true)
+        "nfcDisabled" -> runCatching {
+            android.nfc.NfcAdapter.getDefaultAdapter(app)?.isEnabled != true
+        }.getOrDefault(true)
+        "locationOff" -> runCatching {
+            android.provider.Settings.Secure.getInt(
+                app.contentResolver, android.provider.Settings.Secure.LOCATION_MODE, 0,
+            ) == 0
+        }.getOrDefault(true)
+        "batteryNotCharging" -> chargingType() == 0
+        "wifiConnected" -> runCatching {
+            val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+        }.getOrDefault(false)
+        "appNotRunning" -> runCatching {
+            val am = app.getSystemService(android.app.ActivityManager::class.java)
+            am.runningAppProcesses?.any { it.processName == c.params["package"].orEmpty() } != true
+        }.getOrDefault(true)
         else -> true
     }
 

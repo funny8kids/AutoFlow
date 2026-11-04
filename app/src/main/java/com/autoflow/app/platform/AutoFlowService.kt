@@ -34,6 +34,7 @@ class AutoFlowService : Service() {
             runCatching { pollDataUsed() }
             runCatching { pollWeather() }
             runCatching { pollAirQuality() }
+            runCatching { pollSystemStates() }
             handler.postDelayed(this, 3000)
         }
     }
@@ -129,6 +130,9 @@ class AutoFlowService : Service() {
     private var lastWeatherTemp: Double? = null
     private var lastWeatherKey = ""
     private var airLastPoll = 0L
+    private var sysStateLastPoll = 0L
+    private var lastLocationOn: Boolean? = null
+    private var lastDndOn: Boolean? = null
 
     private fun pollCalendar() {
         val now = System.currentTimeMillis()
@@ -239,6 +243,41 @@ class AutoFlowService : Service() {
             val aqi = org.json.JSONObject(text).getJSONObject("current").getInt("us_aqi")
             app.triggers.onAirQuality(aqi)
         }.onFailure { app.logs.warn("AutoFlowService", "空气质量拉取失败: ${it.message}") }
+    }
+
+    /** 定位服务 / 勿扰模式状态轮询，30 秒一次，变化时分发。 */
+    private fun pollSystemStates() {
+        val now = System.currentTimeMillis()
+        if (now - sysStateLastPoll < 30_000L) return
+        sysStateLastPoll = now
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val macros = app.store.macros.value.filter { it.enabled }
+        val watchedLoc = macros.any { m -> m.triggers.any { it.type == "locationServiceChange" } }
+        val watchedDnd = macros.any { m -> m.triggers.any { it.type == "dndChange" } }
+        if (!watchedLoc && !watchedDnd) return
+
+        if (watchedLoc) {
+            runCatching {
+                val on = android.provider.Settings.Secure.getInt(
+                    contentResolver, android.provider.Settings.Secure.LOCATION_MODE, 0,
+                ) != 0
+                if (lastLocationOn != null && on != lastLocationOn) {
+                    app.triggers.onLocationServiceChange(on)
+                }
+                lastLocationOn = on
+            }
+        }
+        if (watchedDnd) {
+            runCatching {
+                val filter = getSystemService(NotificationManager::class.java).currentInterruptionFilter
+                val on = filter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL &&
+                    filter != android.app.NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+                if (lastDndOn != null && on != lastDndOn) {
+                    app.triggers.onDndChange(on)
+                }
+                lastDndOn = on
+            }
+        }
     }
 
     private fun pollMusic() {
