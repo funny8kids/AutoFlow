@@ -1,6 +1,10 @@
 package com.autoflow.app.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -50,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +99,13 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val runningIds by vm.runningIds.collectAsStateWithLifecycle()
     var route by remember { mutableStateOf<Route>(Route.List) }
 
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entered = true }
+
+    AnimatedVisibility(
+        visible = entered,
+        enter = fadeIn(tween(360)) + scaleIn(tween(360), initialScale = 0.985f),
+    ) {
     AnimatedContent(
         targetState = route,
         transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
@@ -179,6 +191,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onBack = { route = Route.List },
             )
         }
+    }
     }
 }
 

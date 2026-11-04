@@ -1,6 +1,14 @@
 package com.autoflow.app
 
 import android.Manifest
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
+import android.view.View
+import android.view.animation.DecelerateInterpolator
+import androidx.lifecycle.lifecycleScope
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -23,6 +31,29 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 必须在 super.onCreate 之前安装，接管系统启动页
+        val splash = installSplashScreen()
+        var keepSplash = true
+        splash.setKeepOnScreenCondition { keepSplash }
+        splash.setOnExitAnimationListener { provider ->
+            val view = provider.view
+            val anim = AnimatorSet().apply {
+                playTogether(
+                    ObjectAnimator.ofFloat(view, View.ALPHA, 1f, 0f),
+                    ObjectAnimator.ofFloat(view, View.SCALE_X, 1f, 1.06f),
+                    ObjectAnimator.ofFloat(view, View.SCALE_Y, 1f, 1.06f),
+                )
+                duration = 320
+                interpolator = DecelerateInterpolator()
+            }
+            anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    provider.remove()
+                }
+            })
+            anim.start()
+        }
+
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences(AutoFlowApp.PREFS, Context.MODE_PRIVATE)
@@ -32,6 +63,12 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         requestRuntimePermissions()
+
+        // 数据就绪或超时后放行，避免启动页一闪而过
+        lifecycleScope.launch {
+            delay(420)
+            keepSplash = false
+        }
 
         val app = runCatching { AutoFlowApp.app() }.getOrNull()
         val fatal = app?.startupError
