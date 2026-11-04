@@ -51,6 +51,9 @@ class TriggerManager(
     private var lastSsid: String? = null
     private var lastVpn = false
     private var lastForegroundPkg: String? = null
+    private val sunFired = mutableSetOf<String>()
+    private var locationListener: android.location.LocationListener? = null
+    private var lastLocation: Pair<Double, Double>? = null
     private var lastBrightness = -1
     private var lastVolume = -1
     private val sensorManager by lazy { app.getSystemService(SensorManager::class.java) }
@@ -68,6 +71,7 @@ class TriggerManager(
         ensureMoreReceivers(macros)
         ensureGenericBroadcast(macros)
         ensureSensors(macros)
+        ensureLocation(macros)
         app.logs.info("触发器", "已刷新：${macros.count { it.enabled }} 个启用宏")
     }
 
@@ -356,6 +360,7 @@ class TriggerManager(
             tickReceiver = object : BroadcastReceiver() {
                 override fun onReceive(context: Context, intent: Intent) {
                     dispatch("timeTick", "每分钟")
+                    checkSunTimes()
                     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                     if (hour != lastHour) {
                         lastHour = hour
@@ -800,6 +805,114 @@ class TriggerManager(
         dispatch("notificationText", "通知含文字: $packageName") { t ->
             val want = t.params["text"].orEmpty()
             want.isBlank() || text.contains(want, ignoreCase = true)
+        }
+    }
+
+    fun currentForegroundPkg(): String? = lastForegroundPkg
+
+    fun onWeatherChange(tempCelsius: Double, previous: Double) {
+        dispatch("weatherChange", "气温 $previous → $tempCelsius ℃") { t ->
+            Math.abs(tempCelsius - previous) >= (t.params["delta"]?.toDoubleOrNull() ?: 3.0)
+        }
+    }
+
+    fun onDataUsed(totalMb: Int) {
+        dispatch("dataUsed", "累计流量 $totalMb MB") { t ->
+            totalMb >= (t.params["mb"]?.toIntOrNull() ?: 500)
+        }
+    }
+
+    /** 本地天文计算：返回指定日出/日落的 UTC 毫秒；-1 极夜 / -2 极昼。 */
+    private fun sunTimeUtc(lat: Double, lon: Double, sunrise: Boolean, cal: java.util.Calendar): Long {
+        val dayOfYear = cal.get(java.util.Calendar.DAY_OF_YEAR)
+        val gamma = 2 * Math.PI / 365.0 * (dayOfYear - 1)
+        val eqTime = 229.18 * (0.000075 + 0.001868 * Math.cos(gamma) - 0.032077 * Math.sin(gamma) -
+            0.014615 * Math.sin(2 * gamma))
+        val decl = 0.006918 - 0.399912 * Math.cos(gamma) + 0.070257 * Math.sin(gamma) -
+            0.006758 * Math.cos(2 * gamma) + 0.000907 * Math.sin(2 * gamma) -
+            0.002697 * Math.cos(3 * gamma) + 0.00148 * Math.sin(3 * gamma)
+        val latRad = Math.toRadians(lat)
+        val cosOmega = Math.cos(Math.toRadians(90.833)) / (Math.cos(latRad) * Math.cos(decl)) -
+            Math.tan(latRad) * Math.tan(decl)
+        if (cosOmega > 1.0) return -1L
+        if (cosOmega < -1.0) return -2L
+        val omega = Math.acos(cosOmega)
+        val minutes = if (sunrise) 720.0 - 4 * (lon + Math.toDegrees(omega)) - eqTime
+        else 720.0 - 4 * (lon - Math.toDegrees(omega)) - eqTime
+        val utcMidnight = (cal.clone() as java.util.Calendar).apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            set(java.util.Calendar.ZONE_OFFSET, 0)
+            set(java.util.Calendar.DST_OFFSET, 0)
+        }.timeInMillis
+        return utcMidnight + (minutes * 60_000).toLong()
+    }
+
+    /** 每分钟 tick 时检查日出/日落是否到达。 */
+    fun checkSunTimes() {
+        val watched = store.macros.value.any { m ->
+            m.enabled && m.triggers.any { it.type == "sunriseSunset" }
+        }
+        if (!watched) return
+        val cal = java.util.Calendar.getInstance()
+        val dayKey = cal.get(java.util.Calendar.DAY_OF_YEAR).toString()
+        for (kind in listOf("sunrise", "sunset")) {
+            val key = "$dayKey-$kind"
+            if (key in sunFired) continue
+            val utc = sunTimeUtc(39.9, 116.4, kind == "sunrise", cal)
+            if (utc <= 0) continue
+            val local = utc + java.util.TimeZone.getDefault().getOffset(utc)
+            val now = System.currentTimeMillis()
+            if (now >= local && now - local < 90_000L) {
+                sunFired.add(key)
+                if (sunFired.size > 200) sunFired.clear()
+                dispatch("sunriseSunset", if (kind == "sunrise") "日出" else "日落") { t ->
+                    (t.params["kind"] ?: "sunrise") == kind
+                }
+            }
+        }
+    }
+
+    /** 位置变化监听（PASSIVE 提供者，节能）。 */
+    private fun ensureLocation(macros: List<Macro>) {
+        val need = macros.any { m -> m.enabled && m.triggers.any { it.type == "locationChange" } }
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            app, android.Manifest.permission.ACCESS_COARSE_LOCATION,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (need && locationListener == null && granted) {
+            val lm = app.getSystemService(android.location.LocationManager::class.java)
+            val listener = object : android.location.LocationListener {
+                override fun onLocationChanged(location: android.location.Location) {
+                    val last = lastLocation
+                    if (last != null) {
+                        val dist = FloatArray(1)
+                        android.location.Location.distanceBetween(
+                            last.first, last.second, location.latitude, location.longitude, dist,
+                        )
+                        if (dist[0] > 1f) {
+                            dispatch("locationChange", "移动 ${dist[0].toInt()} 米") { t ->
+                                dist[0] >= (t.params["meters"]?.toFloatOrNull() ?: 200f)
+                            }
+                        }
+                    }
+                    lastLocation = location.latitude to location.longitude
+                }
+            }
+            locationListener = listener
+            runCatching {
+                lm?.requestLocationUpdates(
+                    android.location.LocationManager.PASSIVE_PROVIDER, 60_000L, 20f, listener,
+                    android.os.Looper.getMainLooper(),
+                )
+            }
+        } else if (!need && locationListener != null) {
+            runCatching {
+                app.getSystemService(android.location.LocationManager::class.java)
+                    ?.removeUpdates(locationListener!!)
+            }
+            locationListener = null
         }
     }
 

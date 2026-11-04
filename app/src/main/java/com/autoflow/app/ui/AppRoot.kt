@@ -4,14 +4,19 @@ import android.content.Intent
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
@@ -30,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
@@ -67,12 +73,15 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -313,24 +322,61 @@ private fun HomeDashboard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
+                val wave = rememberInfiniteTransition().animateFloat(
+                    initialValue = 0f,
+                    targetValue = (2f * kotlin.math.PI).toFloat(),
+                    animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)),
+                )
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(Brush.linearGradient(listOf(Brand.Primary, Brand.Secondary)))
-                        .padding(20.dp),
+                        .height(172.dp)
+                        .clip(RoundedCornerShape(26.dp)),
                 ) {
-                    Column {
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawRect(brush = Brush.verticalGradient(listOf(Color(0xFF171E3D), Color(0xFF0C1226))))
+                        drawRect(
+                            Brush.radialGradient(
+                                listOf(Color(0x556C7CFF), Color(0x006C7CFF)),
+                                center = Offset(size.width * 0.22f, size.height * 0.08f),
+                                radius = size.width * 0.55f,
+                            ),
+                        )
+                        drawRect(
+                            Brush.radialGradient(
+                                listOf(Color(0x3D33E1C4), Color(0x0033E1C4)),
+                                center = Offset(size.width * 0.86f, size.height * 0.98f),
+                                radius = size.width * 0.5f,
+                            ),
+                        )
+                        val step = 22f
+                        var x = 10f
+                        while (x < size.width) {
+                            var y = 12f
+                            while (y < size.height) {
+                                val a = 0.05f + 0.15f *
+                                    (0.5f + 0.5f * kotlin.math.sin(x / 58f + y / 44f + wave.value))
+                                drawCircle(
+                                    color = Color(0xFFBFC8FF).copy(alpha = a),
+                                    radius = 1.6f,
+                                    center = Offset(x, y),
+                                )
+                                y += step
+                            }
+                            x += step
+                        }
+                    }
+                    Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 24.dp)) {
                         Text(
                             if (runningCount > 0) "$runningCount 个宏正在运行" else "一切就绪",
                             color = Color.White,
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
                             "${macros.size} 个宏 · ${macros.count { it.enabled }} 个启用",
-                            color = Color.White.copy(alpha = 0.9f),
+                            color = Color.White.copy(alpha = 0.88f),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -640,7 +686,8 @@ private fun MacroListScreen(
                             }
                         }
                         if (cat !in collapsed) {
-                            items(list, key = { it.id }) { macro ->
+                            itemsIndexed(list, key = { _, m -> m.id }) { i, macro ->
+                                StaggerIn(i) {
                                 MacroCard(
                                     macro = macro,
                                     running = macro.id in runningIds,
@@ -652,11 +699,13 @@ private fun MacroListScreen(
                                     onClone = onClone,
                                     onShareJson = onShareJson,
                                 )
+                                }
                             }
                         }
                     }
                 } else {
-                    items(filtered, key = { it.id }) { macro ->
+                    itemsIndexed(filtered, key = { _, m -> m.id }) { i, macro ->
+                        StaggerIn(i) {
                         MacroCard(
                             macro = macro,
                             running = macro.id in runningIds,
@@ -668,6 +717,7 @@ private fun MacroListScreen(
                             onClone = onClone,
                             onShareJson = onShareJson,
                         )
+                        }
                     }
                 }
                 if (filtered.isEmpty()) {
@@ -744,6 +794,22 @@ private fun EmptyState(
     }
 }
 
+/** 列表项交错入场：淡入 + 轻微上浮，索引越大延迟越久（封顶 8 档）。 */
+@Composable
+private fun StaggerIn(index: Int, content: @Composable () -> Unit) {
+    val anim = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        delay((index.coerceAtMost(8)) * 45L)
+        anim.animateTo(1f, tween(340))
+    }
+    Box(
+        Modifier.graphicsLayer {
+            alpha = anim.value
+            translationY = (1f - anim.value) * 26f
+        },
+    ) { content() }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MacroCard(
@@ -760,10 +826,19 @@ private fun MacroCard(
     var menuOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val accent = Brand.accents[macro.accent.coerceIn(0, Brand.accents.lastIndex)]
+    val pulse = rememberInfiniteTransition().animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+    )
     Card(
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        border = BorderStroke(
+            if (running) 1.5.dp else 1.dp,
+            if (running) Brand.Secondary.copy(alpha = pulse.value)
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+        ),
         modifier = Modifier.fillMaxWidth().combinedClickable(
             onClick = { onOpen(macro) },
             onLongClick = { menuOpen = true },

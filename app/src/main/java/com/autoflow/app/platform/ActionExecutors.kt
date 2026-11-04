@@ -850,6 +850,26 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     ctx.locals[p["toVar"].orEmpty()] = out.toString()
                 }.onFailure { app.logs.error(macro.name, "查询日程失败: ${it.message}") }
             }
+            "sendEmail" -> runCatching {
+                app.startActivity(Intent(Intent.ACTION_SENDTO).apply {
+                    data = Uri.parse("mailto:" + Uri.encode(p["to"].orEmpty()))
+                    putExtra(Intent.EXTRA_SUBJECT, magic(p["subject"].orEmpty(), ctx))
+                    putExtra(Intent.EXTRA_TEXT, magic(p["body"].orEmpty(), ctx))
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            }
+            "wifiConnectPicker" -> runCatching {
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    app.startActivity(Intent(android.provider.Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } else {
+                    openSettingsPage(android.provider.Settings.ACTION_WIFI_SETTINGS)
+                }
+            }
+            "setBrightnessPercent" -> {
+                val percent = (p["percent"]?.toIntOrNull() ?: 50).coerceIn(1, 100)
+                shellPrivileged(macro.name, "settings put system screen_brightness ${percent * 255 / 100}")
+            }
+            "killBackgroundApp" -> shellPrivileged(macro.name, "am force-stop ${p["package"].orEmpty()}")
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
@@ -1095,6 +1115,20 @@ class ActionExecutors(private val app: AutoFlowApp) {
             } else true
         }.getOrDefault(true)
         "screenDim" -> screenBrightness() < 50
+        "appInBackground" -> (app.triggers.currentForegroundPkg() ?: "") != c.params["package"].orEmpty()
+        "roamingOn" -> runCatching {
+            app.getSystemService(android.telephony.TelephonyManager::class.java)?.isNetworkRoaming == true
+        }.getOrDefault(false)
+        "screenBrightnessAuto" -> runCatching {
+            android.provider.Settings.System.getInt(
+                app.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE, 0,
+            ) == android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+        }.getOrDefault(false)
+        "vpnOff" -> runCatching {
+            val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return@runCatching true
+            !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
+        }.getOrDefault(true)
         else -> true
     }
 

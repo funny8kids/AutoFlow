@@ -31,6 +31,8 @@ class AutoFlowService : Service() {
             runCatching { pollForeground() }
             runCatching { pollMusic() }
             runCatching { pollCalendar() }
+            runCatching { pollDataUsed() }
+            runCatching { pollWeather() }
             handler.postDelayed(this, 3000)
         }
     }
@@ -121,6 +123,10 @@ class AutoFlowService : Service() {
     }
 
     private var calendarLastPoll = 0L
+    private var dataLastPoll = 0L
+    private var weatherLastPoll = 0L
+    private var lastWeatherTemp: Double? = null
+    private var lastWeatherKey = ""
 
     private fun pollCalendar() {
         val now = System.currentTimeMillis()
@@ -151,6 +157,55 @@ class AutoFlowService : Service() {
                 }
             }
         }
+    }
+
+    /** 流量累计（自开机，TrafficStats），5 分钟一次。 */
+    private fun pollDataUsed() {
+        val now = System.currentTimeMillis()
+        if (now - dataLastPoll < 5 * 60_000L) return
+        dataLastPoll = now
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val watched = app.store.macros.value.any { m ->
+            m.enabled && m.triggers.any { it.type == "dataUsed" }
+        }
+        if (!watched) return
+        val rx = android.net.TrafficStats.getTotalRxBytes()
+        val tx = android.net.TrafficStats.getTotalTxBytes()
+        val mb = ((rx + tx) / 1024L / 1024L).toInt()
+        app.triggers.onDataUsed(mb)
+    }
+
+    /** 天气轮询（Open-Meteo 免费 API），15 分钟一次；坐标取第一个宏的参数。 */
+    private fun pollWeather() {
+        val now = System.currentTimeMillis()
+        if (now - weatherLastPoll < 15 * 60_000L) return
+        weatherLastPoll = now
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val macro = app.store.macros.value.firstOrNull { m ->
+            m.enabled && m.triggers.any { it.type == "weatherChange" }
+        } ?: return
+        val t = macro.triggers.first { it.type == "weatherChange" }
+        val lat = t.params["lat"]?.toDoubleOrNull()
+        val lon = t.params["lon"]?.toDoubleOrNull()
+        if (lat == null || lon == null) return
+        val key = "$lat,$lon"
+        runCatching {
+            val url = java.net.URL(
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m",
+            )
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            val text = conn.inputStream.use { it.readBytes().decodeToString() }
+            conn.disconnect()
+            val temp = org.json.JSONObject(text).getJSONObject("current").getDouble("temperature_2m")
+            val previous = if (key == lastWeatherKey) lastWeatherTemp else null
+            if (previous != null) {
+                app.triggers.onWeatherChange(temp, previous)
+            }
+            lastWeatherTemp = temp
+            lastWeatherKey = key
+        }.onFailure { app.logs.warn("AutoFlowService", "天气拉取失败: ${it.message}") }
     }
 
     private fun pollMusic() {

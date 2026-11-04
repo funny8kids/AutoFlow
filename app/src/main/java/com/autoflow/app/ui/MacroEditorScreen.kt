@@ -19,6 +19,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -283,6 +285,24 @@ fun MacroEditorScreen(
                                     index = index + 1,
                                     onEdit = { Registry.action(a.type)?.let { editing = Triple(SectionKind.ACTION, index, it) } },
                                     onRemove = { draft = draft.copy(actions = draft.actions.filterIndexed { i, _ -> i != index }) },
+                                    onMoveUp = if (index > 0) {
+                                        {
+                                            draft = draft.copy(
+                                                actions = draft.actions.toMutableList().apply {
+                                                    add(index - 1, removeAt(index))
+                                                },
+                                            )
+                                        }
+                                    } else null,
+                                    onMoveDown = if (index < draft.actions.size - 1) {
+                                        {
+                                            draft = draft.copy(
+                                                actions = draft.actions.toMutableList().apply {
+                                                    add(index + 1, removeAt(index))
+                                                },
+                                            )
+                                        }
+                                    } else null,
                                 )
                             }
                         }
@@ -387,6 +407,8 @@ private fun ItemRow(
     index: Int? = null,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -406,6 +428,26 @@ private fun ItemRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
+        }
+        if (onMoveUp != null || onMoveDown != null) {
+            Column {
+                IconButton(onClick = { onMoveUp?.invoke() }, enabled = onMoveUp != null) {
+                    Icon(
+                        Icons.Default.KeyboardArrowUp,
+                        contentDescription = "上移",
+                        tint = if (onMoveUp != null) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                    )
+                }
+                IconButton(onClick = { onMoveDown?.invoke() }, enabled = onMoveDown != null) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "下移",
+                        tint = if (onMoveDown != null) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                    )
+                }
+            }
         }
         IconButton(onClick = onEdit) {
             Text("编辑", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)

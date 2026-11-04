@@ -204,6 +204,16 @@ object Registry {
         ItemSpec("mediaPlaybackChanged", "播放状态变化", "音乐开始/停止播放时触发", Icons.Default.MusicNote, "设备",
             listOf(ParamSpec("state", "状态", ParamKind.CHOICE, "playing",
                 listOf(Choice("playing", "开始播放"), Choice("stopped", "停止播放"))))),
+        ItemSpec("sunriseSunset", "日出/日落", "日出或日落时刻触发（本地天文计算）", Icons.Default.Star, "时间",
+            listOf(ParamSpec("kind", "时刻", ParamKind.CHOICE, "sunrise",
+                listOf(Choice("sunrise", "日出"), Choice("sunset", "日落"))))),
+        ItemSpec("dataUsed", "流量达标", "自开机累计流量达到阈值时触发", Icons.Default.Cloud, "网络",
+            listOf(ParamSpec("mb", "流量 MB", ParamKind.NUMBER, "500"))),
+        ItemSpec("locationChange", "位置变化", "设备移动超过阈值距离时触发", Icons.Default.Cloud, "传感器",
+            listOf(ParamSpec("meters", "移动距离（米）", ParamKind.NUMBER, "200"))),
+        ItemSpec("weatherChange", "天气变化", "气温变化超过阈值时触发（Open-Meteo）", Icons.Default.Cloud, "网络",
+            listOf(ParamSpec("lat", "纬度", default = ""), ParamSpec("lon", "经度", default = ""),
+                ParamSpec("delta", "温差 ℃", ParamKind.NUMBER, "3"))),
         // ---- 传感器 ----
         ItemSpec("shake", "摇晃设备", "快速摇晃手机时触发", Icons.Default.Vibration, "传感器",
             listOf(ParamSpec("strength", "灵敏度（1-3）", ParamKind.NUMBER, "2"))),
@@ -586,6 +596,13 @@ object Registry {
         ItemSpec("calendarQuery", "查询日程", "查未来 N 分钟内的日历事件", Icons.Default.Schedule, "系统",
             listOf(ParamSpec("minutesAhead", "往前看多少分钟", ParamKind.NUMBER, "60"),
                 ParamSpec("toVar", "结果变量", default = "events"))),
+        ItemSpec("sendEmail", "发送邮件", "调起邮件应用并预填收件人与主题", Icons.Default.Comment, "通信",
+            listOf(ParamSpec("to", "收件人"), ParamSpec("subject", "主题"), ParamSpec("body", "正文"))),
+        ItemSpec("wifiConnectPicker", "WiFi 选择面板", "打开系统 WiFi 选择面板（Android 10+）", Icons.Default.Wifi, "网络"),
+        ItemSpec("setBrightnessPercent", "设置亮度百分比", "0-100% 设置屏幕亮度（需 Root/写入权限）", Icons.Default.Star, "设备",
+            listOf(ParamSpec("percent", "百分比", ParamKind.NUMBER, "50"))),
+        ItemSpec("killBackgroundApp", "结束后台应用", "强停指定应用（需 Root）", Icons.Default.Delete, "高级",
+            listOf(ParamSpec("package", "包名"))),
         // ---- 系统 / 界面扩展 ----
         ItemSpec("setWallpaper", "设置壁纸", "把图片设为壁纸", Icons.Default.Star, "界面",
             listOf(ParamSpec("file", "图片文件名"))),
@@ -733,6 +750,11 @@ object Registry {
             listOf(ParamSpec("count", "数量", ParamKind.NUMBER, "3"))),
         ItemSpec("thermalBelow", "温度正常", "仅在设备温度未过高时执行", Icons.Default.BatteryChargingFull, "设备"),
         ItemSpec("screenDim", "屏幕较暗", "屏幕亮度低于 50 时执行", Icons.Default.Star, "设备"),
+        ItemSpec("appInBackground", "应用在后台", "指定应用不在前台时执行", Icons.Default.OpenInNew, "应用",
+            listOf(ParamSpec("package", "包名"))),
+        ItemSpec("roamingOn", "漫游开启", "仅数据漫游开启时执行", Icons.Default.Cloud, "网络"),
+        ItemSpec("screenBrightnessAuto", "自动亮度", "仅自动亮度开启时执行", Icons.Default.Star, "设备"),
+        ItemSpec("vpnOff", "VPN 断开", "仅 VPN 未连接时执行", Icons.Default.Cloud, "网络"),
     )
 
     fun trigger(type: String): ItemSpec? = triggers.firstOrNull { it.type == type }
