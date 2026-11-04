@@ -221,6 +221,11 @@ object Registry {
                 ParamSpec("aqi", "AQI 阈值", ParamKind.NUMBER, "100"),
                 ParamSpec("direction", "方向", ParamKind.CHOICE, "above",
                     listOf(Choice("above", "高于"), Choice("below", "低于"))))),
+        ItemSpec("weatherRain", "开始下雨", "检测到降水时触发（Open-Meteo）", Icons.Default.Cloud, "网络",
+            listOf(ParamSpec("lat", "纬度", default = ""), ParamSpec("lon", "经度", default = ""))),
+        ItemSpec("uvIndexHigh", "紫外线强", "紫外线指数超过阈值时触发", Icons.Default.Star, "网络",
+            listOf(ParamSpec("lat", "纬度", default = ""), ParamSpec("lon", "经度", default = ""),
+                ParamSpec("uv", "UV 指数", ParamKind.NUMBER, "6"))),
         // ---- 传感器 ----
         ItemSpec("shake", "摇晃设备", "快速摇晃手机时触发", Icons.Default.Vibration, "传感器",
             listOf(ParamSpec("strength", "灵敏度（1-3）", ParamKind.NUMBER, "2"))),
@@ -623,6 +628,15 @@ object Registry {
         ItemSpec("locationToggle", "定位开关", "打开/关闭/切换定位服务（需 Root）", Icons.Default.Cloud, "高级",
             listOf(ParamSpec("state", "操作", ParamKind.CHOICE, "toggle",
                 listOf(Choice("on", "打开"), Choice("off", "关闭"), Choice("toggle", "切换"))))),
+        ItemSpec("speakerPhoneToggle", "免提开关", "打开/关闭/切换扬声器", Icons.Default.VolumeUp, "设备",
+            listOf(ParamSpec("state", "操作", ParamKind.CHOICE, "toggle",
+                listOf(Choice("on", "打开"), Choice("off", "关闭"), Choice("toggle", "切换"))))),
+        ItemSpec("muteMicrophone", "静音麦克风", "静音/取消静音麦克风", Icons.Default.VolumeUp, "设备",
+            listOf(ParamSpec("state", "操作", ParamKind.CHOICE, "mute",
+                listOf(Choice("mute", "静音"), Choice("unmute", "取消"))))),
+        ItemSpec("installApk", "安装 APK", "安装私有目录里的 APK 文件", Icons.Default.OpenInNew, "应用",
+            listOf(ParamSpec("file", "APK 文件名"))),
+        ItemSpec("shareClipboardText", "分享剪贴板", "把当前剪贴板内容分享出去", Icons.Default.ContentCopy, "界面"),
         // ---- 系统 / 界面扩展 ----
         ItemSpec("setWallpaper", "设置壁纸", "把图片设为壁纸", Icons.Default.Star, "界面",
             listOf(ParamSpec("file", "图片文件名"))),
@@ -785,6 +799,13 @@ object Registry {
         ItemSpec("storageAbove", "剩余存储高于", "剩余存储高于阈值（MB）才执行", Icons.Default.Cloud, "设备",
             listOf(ParamSpec("mb", "MB", ParamKind.NUMBER, "1024"))),
         ItemSpec("headsetConnected", "耳机已连接", "仅有线/蓝牙耳机连接时执行", Icons.Default.MusicNote, "设备"),
+        ItemSpec("headsetDisconnected", "耳机未连接", "仅耳机未连接时执行", Icons.Default.MusicNote, "设备"),
+        ItemSpec("roamingOff", "漫游关闭", "仅数据漫游关闭时执行", Icons.Default.Cloud, "网络"),
+        ItemSpec("vpnOn", "VPN 开启", "仅 VPN 连接时执行", Icons.Default.Cloud, "网络"),
+        ItemSpec("batteryTemperatureAbove", "电池温度高于", "电池温度高于阈值（℃）才执行", Icons.Default.BatteryChargingFull, "电源",
+            listOf(ParamSpec("celsius", "温度 ℃", ParamKind.NUMBER, "42"))),
+        ItemSpec("mediaPlayingOff", "音频未播放", "仅没有音频播放时执行", Icons.Default.MusicNote, "设备"),
+        ItemSpec("isWorkProfile", "工作资料", "仅在托管工作资料下执行", Icons.Default.OpenInNew, "应用"),
     )
 
     fun trigger(type: String): ItemSpec? = triggers.firstOrNull { it.type == type }

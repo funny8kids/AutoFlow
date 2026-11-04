@@ -193,18 +193,23 @@ class AutoFlowService : Service() {
         val key = "$lat,$lon"
         runCatching {
             val url = java.net.URL(
-                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m",
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,precipitation,uv_index",
             )
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
             val text = conn.inputStream.use { it.readBytes().decodeToString() }
             conn.disconnect()
-            val temp = org.json.JSONObject(text).getJSONObject("current").getDouble("temperature_2m")
+            val current = org.json.JSONObject(text).getJSONObject("current")
+            val temp = current.getDouble("temperature_2m")
+            val precip = current.optDouble("precipitation", 0.0)
+            val uv = current.optDouble("uv_index", 0.0)
             val previous = if (key == lastWeatherKey) lastWeatherTemp else null
             if (previous != null) {
                 app.triggers.onWeatherChange(temp, previous)
             }
+            app.triggers.onWeatherPrecip(precip)
+            app.triggers.onUvIndex(uv)
             lastWeatherTemp = temp
             lastWeatherKey = key
         }.onFailure { app.logs.warn("AutoFlowService", "天气拉取失败: ${it.message}") }

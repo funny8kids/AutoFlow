@@ -908,6 +908,53 @@ class ActionExecutors(private val app: AutoFlowApp) {
                 }
                 shellPrivileged(macro.name, cmd)
             }
+            "speakerPhoneToggle" -> {
+                val am = app.getSystemService(AudioManager::class.java)
+                val state = p["state"] ?: "toggle"
+                val on = when (state) {
+                    "on" -> true
+                    "off" -> false
+                    else -> !am.isSpeakerphoneOn
+                }
+                runCatching { am.isSpeakerphoneOn = on }
+                app.logs.info(macro.name, "扬声器: ${if (on) "开" else "关"}")
+            }
+            "muteMicrophone" -> runCatching {
+                val am = app.getSystemService(AudioManager::class.java)
+                am.isMicrophoneMute = (p["state"] ?: "mute") == "mute"
+            }
+            "installApk" -> runCatching {
+                val file = File(app.filesDir, p["file"].orEmpty())
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    app, app.packageName + ".fileprovider", file,
+                )
+                app.startActivity(
+                    Intent(Intent.ACTION_VIEW).apply {
+                        data = uri
+                        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                        )
+                    },
+                )
+                app.logs.info(macro.name, "已调起安装器: ${file.name}")
+            }.onFailure { app.logs.error(macro.name, "安装失败: ${it.message}") }
+            "shareClipboardText" -> runCatching {
+                val cm = app.getSystemService(android.content.ClipboardManager::class.java)
+                val text = cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+                app.startActivity(
+                    Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        },
+                        "分享剪贴板",
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
@@ -1187,6 +1234,25 @@ class ActionExecutors(private val app: AutoFlowApp) {
         "headsetConnected" -> runCatching {
             val am = app.getSystemService(AudioManager::class.java)
             am.isWiredHeadsetOn || am.isBluetoothScoOn || am.isBluetoothA2dpOn
+        }.getOrDefault(false)
+        "headsetDisconnected" -> runCatching {
+            val am = app.getSystemService(AudioManager::class.java)
+            !(am.isWiredHeadsetOn || am.isBluetoothScoOn || am.isBluetoothA2dpOn)
+        }.getOrDefault(true)
+        "roamingOff" -> runCatching {
+            app.getSystemService(android.telephony.TelephonyManager::class.java)?.isNetworkRoaming != true
+        }.getOrDefault(true)
+        "vpnOn" -> runCatching {
+            val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
+        }.getOrDefault(false)
+        "batteryTemperatureAbove" -> batteryTempC() > (c.params["celsius"]?.toDoubleOrNull() ?: 42.0)
+        "mediaPlayingOff" -> runCatching {
+            app.getSystemService(AudioManager::class.java).isMusicActive == false
+        }.getOrDefault(true)
+        "isWorkProfile" -> runCatching {
+            app.getSystemService(android.os.UserManager::class.java)?.isManagedProfile == true
         }.getOrDefault(false)
         else -> true
     }

@@ -55,6 +55,8 @@ class TriggerManager(
     private var locationListener: android.location.LocationListener? = null
     private var lastLocation: Pair<Double, Double>? = null
     private var callLogObserver: android.database.ContentObserver? = null
+    private var rainActive = false
+    private var lastUv: Double? = null
     private var lastCallId: Long = -1
     private var lastBrightness = -1
     private var lastVolume = -1
@@ -812,6 +814,23 @@ class TriggerManager(
     }
 
     fun currentForegroundPkg(): String? = lastForegroundPkg
+
+    fun onWeatherPrecip(precipMm: Double) {
+        if (precipMm > 0.0 && !rainActive) {
+            rainActive = true
+            dispatch("weatherRain", "开始下雨（降水 ${precipMm}mm）") { _ -> true }
+        }
+        if (precipMm <= 0.0) rainActive = false
+    }
+
+    fun onUvIndex(uv: Double) {
+        val last = lastUv
+        lastUv = uv
+        dispatch("uvIndexHigh", "紫外线指数 $uv") { t ->
+            val threshold = t.params["uv"]?.toDoubleOrNull() ?: 6.0
+            uv >= threshold && (last ?: 0.0) < threshold
+        }
+    }
 
     fun onAirQuality(aqi: Int) {
         dispatch("airQuality", "AQI $aqi") { t ->
