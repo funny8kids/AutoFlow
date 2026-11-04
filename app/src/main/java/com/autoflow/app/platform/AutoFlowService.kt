@@ -135,6 +135,7 @@ class AutoFlowService : Service() {
     private var lastLocationOn: Boolean? = null
     private var lastDndOn: Boolean? = null
     private var lastRoaming: Boolean? = null
+    private var lastA11y: Boolean? = null
 
     private fun pollCalendar() {
         val now = System.currentTimeMillis()
@@ -278,6 +279,20 @@ class AutoFlowService : Service() {
                     app.triggers.onDndChange(on)
                 }
                 lastDndOn = on
+            }
+        }
+
+        if (app.store.macros.value.any { m ->
+                m.enabled && m.triggers.any { it.type == "accessibilityStateChanged" }
+            }
+        ) {
+            runCatching {
+                val on = AutoAccessibilityService.isEnabled(this@AutoFlowService) ||
+                    AutoAccessibilityService.isConnected()
+                if (lastA11y != null && on != lastA11y) {
+                    app.triggers.onAccessibilityStateChange(on)
+                }
+                lastA11y = on
             }
         }
     }

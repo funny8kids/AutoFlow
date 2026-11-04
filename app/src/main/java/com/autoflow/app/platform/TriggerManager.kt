@@ -368,6 +368,7 @@ class TriggerManager(
                 override fun onReceive(context: Context, intent: Intent) {
                     dispatch("timeTick", "每分钟")
                     checkSunTimes()
+                    checkMoonPhase()
                     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
                     if (hour != lastHour) {
                         lastHour = hour
@@ -877,6 +878,48 @@ class TriggerManager(
         }
     }
 
+    private var lastA11y: Boolean? = null
+
+    fun onAccessibilityStateChange(on: Boolean) {
+        dispatch("accessibilityStateChanged", if (on) "无障碍已开启" else "无障碍已关闭") { t ->
+            (t.params["state"] ?: "on") == if (on) "on" else "off"
+        }
+    }
+
+    /** 月相近似（Meeus 简化式）：返回月龄天数 0-29.53。 */
+    private fun moonAgeDays(cal: java.util.Calendar): Double {
+        val knownNewMoon = java.util.Calendar.getInstance().apply {
+            set(2000, 0, 6, 18, 14, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val synodic = 29.530588853
+        val days = (cal.timeInMillis - knownNewMoon) / 86_400_000.0
+        return days % synodic
+    }
+
+    fun checkMoonPhase() {
+        val watched = store.macros.value.any { m ->
+            m.enabled && m.triggers.any { it.type == "moonPhase" }
+        }
+        if (!watched) return
+        val cal = java.util.Calendar.getInstance()
+        val dayKey = cal.get(java.util.Calendar.DAY_OF_YEAR).toString()
+        val age = moonAgeDays(cal)
+        val phase = when {
+            age < 1.8455 || age > 27.68 -> "new"
+            age < 7.38 -> "first"      // 上弦前段视为新月→上弦
+            age < 8.51 -> "first"
+            age < 14.77 -> "first"
+            age < 16.61 -> "full"
+            age < 23.02 -> "last"
+            else -> "last"
+        }
+        val key = "$dayKey-$phase"
+        if (key in sunFired) return
+        sunFired.add(key)
+        if (sunFired.size > 300) sunFired.clear()
+        dispatch("moonPhase", "月相：$phase") { t -> (t.params["phase"] ?: "full") == phase }
+    }
+
     fun onRoamingChange(on: Boolean) {
         dispatch("roamingChanged", if (on) "漫游已开启" else "漫游已关闭") { t ->
             (t.params["state"] ?: "on") == if (on) "on" else "off"
@@ -938,6 +981,7 @@ class TriggerManager(
                                             dispatch("callMissed", "未接来电 $number") { _ -> true }
                                         android.provider.CallLog.Calls.OUTGOING_TYPE ->
                                             dispatch("callOutgoing", "拨出电话 $number") { _ -> true }
+                                        5 -> dispatch("callRejected", "来电被拒接 $number") { _ -> true }
                                     }
                                 }
                             }

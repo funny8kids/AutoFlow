@@ -1122,6 +1122,99 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     ).coerceAtMost(60_000L),
             )
             "toastLong" -> main { Toast.makeText(it, magic(p["text"].orEmpty(), ctx), Toast.LENGTH_LONG).show() }
+            "imageWatermarkText" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+                    val paint = android.graphics.Paint().apply {
+                        color = android.graphics.Color.WHITE
+                        textSize = out.width / 22f
+                        isAntiAlias = true
+                        setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
+                    }
+                    val canvas = android.graphics.Canvas(out)
+                    val text = magic(p["text"].orEmpty(), ctx)
+                    val x = out.width - paint.measureText(text) - out.width * 0.04f
+                    canvas.drawText(text, x, out.height - out.width * 0.04f, paint)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "watermark.jpg" }).outputStream().use {
+                        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    out.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "水印失败: ${it.message}") }
+            }
+            "imageAddBorder" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val bw = ((p["widthDp"]?.toIntOrNull() ?: 12)).coerceIn(2, 200)
+                    val out = android.graphics.Bitmap.createBitmap(
+                        src.width + bw * 2, src.height + bw * 2, android.graphics.Bitmap.Config.ARGB_8888,
+                    )
+                    val canvas = android.graphics.Canvas(out)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    canvas.drawBitmap(src, bw.toFloat(), bw.toFloat(), null)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "border.jpg" }).outputStream().use {
+                        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    out.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "边框失败: ${it.message}") }
+            }
+            "getScreenRefreshRate" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val dm = app.resources.displayMetrics
+                app.display?.refreshRate?.toInt()?.toString() ?: dm.densityDpi.toString()
+            }.getOrDefault("")
+            "getFontScale" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                app.resources.configuration.fontScale.toString()
+            }.getOrDefault("1.0")
+            "clipboardHasText" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val cm = app.getSystemService(android.content.ClipboardManager::class.java)
+                (cm.primaryClip?.getItemAt(0)?.text?.isNotBlank() == true).toString()
+            }.getOrDefault("false")
+            "getLastLocation" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val lm = app.getSystemService(android.location.LocationManager::class.java)
+                    val last = lm?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                        ?: lm?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                        ?: lm?.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER)
+                    ctx.locals[p["toVar"].orEmpty()] = last?.let { "${it.latitude},${it.longitude}" } ?: ""
+                }
+            }
+            "readSmsInbox" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val limit = (p["count"]?.toIntOrNull() ?: 5).coerceIn(1, 50)
+                    val out = StringBuilder()
+                    app.contentResolver.query(
+                        android.provider.Telephony.Sms.Inbox.CONTENT_URI,
+                        arrayOf(android.provider.Telephony.Sms.ADDRESS, android.provider.Telephony.Sms.BODY, android.provider.Telephony.Sms.DATE),
+                        null, null, android.provider.Telephony.Sms.DATE + " DESC",
+                    )?.use { c ->
+                        while (c.moveToNext() && out.count { it == '|' } < limit) {
+                            if (out.isNotEmpty()) out.append("|")
+                            val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US)
+                            out.append("[${c.getString(0)} ${fmt.format(java.util.Date(c.getLong(2)))}] ${c.getString(1) ?: ""}")
+                        }
+                    }
+                    ctx.locals[p["toVar"].orEmpty()] = out.toString()
+                }.onFailure { app.logs.error(macro.name, "读取短信失败: ${it.message}") }
+            }
+            "getLastCallNumber" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    app, android.Manifest.permission.READ_CALL_LOG,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!granted) return@runCatching ""
+                app.contentResolver.query(
+                    android.provider.CallLog.Calls.CONTENT_URI,
+                    arrayOf(android.provider.CallLog.Calls.NUMBER),
+                    null, null, android.provider.CallLog.Calls.DATE + " DESC",
+                )?.use { c -> if (c.moveToFirst()) c.getString(0) ?: "" else "" } ?: ""
+            }.getOrDefault("")
+            "runMacro" -> {
+                val name = magic(p["name"].orEmpty(), ctx)
+                val target = app.store.macros.value.firstOrNull { it.name == name && it.id != macro.id }
+                if (target != null) {
+                    app.engine.run(target, "由宏「${macro.name}」调用")
+                    app.logs.info(macro.name, "→ 调用宏「$name」")
+                } else app.logs.error(macro.name, "找不到宏：$name")
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
