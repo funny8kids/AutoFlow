@@ -26,6 +26,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import com.autoflow.app.core.ItemSpec
 fun CatalogSheet(
     title: String,
     items: List<ItemSpec>,
+    recent: List<ItemSpec> = emptyList(),
     onPick: (ItemSpec) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -55,6 +57,11 @@ fun CatalogSheet(
                 (query.isBlank() || spec.label.contains(query, true) || spec.description.contains(query, true))
         }
     }
+    val showGroups = query.isBlank() && category == "全部"
+    val grouped = remember(filtered, showGroups) {
+        if (showGroups) filtered.groupBy { it.category } else emptyMap()
+    }
+    val recentTypes = remember(recent) { recent.map { it.type }.toSet() }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -89,38 +96,77 @@ fun CatalogSheet(
             }
             Spacer(Modifier.height(10.dp))
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(420.dp),
+                modifier = Modifier.fillMaxWidth().height(440.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(filtered) { spec ->
-                    Card(
-                        shape = SmallShape,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        onClick = { onPick(spec) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            IconBadge(spec.icon, MaterialTheme.colorScheme.primary)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(spec.label, style = MaterialTheme.typography.titleMedium)
+                if (showGroups && recent.isNotEmpty()) {
+                    item(key = "recent-head") {
+                        Text(
+                            "最近使用",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    items(recent, key = { "recent-" + it.type }) { spec ->
+                        SpecCard(spec, onPick)
+                    }
+                    item(key = "recent-div") { Spacer(Modifier.height(4.dp)) }
+                }
+                if (showGroups) {
+                    grouped.forEach { (cat, list) ->
+                        item(key = "head-${cat}") {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
                                 Text(
-                                    spec.description,
+                                    cat,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${list.size}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         }
+                        items(list, key = { "${cat}-${it.type}" }) { spec ->
+                            SpecCard(spec, onPick)
+                        }
+                    }
+                } else {
+                    items(filtered, key = { it.type }) { spec ->
+                        SpecCard(spec, onPick)
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SpecCard(spec: ItemSpec, onPick: (ItemSpec) -> Unit) {
+    Card(
+        shape = SmallShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        onClick = { onPick(spec) },
+    ) {
+        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text(spec.label, style = MaterialTheme.typography.titleSmall)
+            Text(
+                spec.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 @Composable
 fun ParamEditorDialog(
     spec: ItemSpec,

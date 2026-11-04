@@ -52,6 +52,10 @@ private enum class SectionKind { TRIGGER, CONSTRAINT, ACTION }
 fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Unit) {
     var draft by remember { mutableStateOf(initial) }
     var catalogFor by remember { mutableStateOf<SectionKind?>(null) }
+    val prefs = remember { com.autoflow.app.AutoFlowApp.app().getSharedPreferences("autoflow_runtime", android.content.Context.MODE_PRIVATE) }
+    var recentTypes by remember {
+        mutableStateOf(prefs.getString("recent_items", "")?.split("|")?.filter { it.isNotBlank() } ?: emptyList())
+    }
     var editing by remember { mutableStateOf<Triple<SectionKind, Int, ItemSpec>?>(null) }
     var showVarDialog by remember { mutableStateOf(false) }
     var editingVarIndex by remember { mutableStateOf(-1) }
@@ -247,7 +251,10 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
                 SectionKind.ACTION -> "选择动作"
             },
             items = specs,
+            recent = recentTypes.mapNotNull { t -> specs.firstOrNull { it.type == t } },
             onPick = { spec ->
+                recentTypes = (listOf(spec.type) + recentTypes.filter { it != spec.type }).take(6)
+                prefs.edit().putString("recent_items", recentTypes.joinToString("|")).apply()
                 catalogFor = null
                 when (kind) {
                     SectionKind.TRIGGER -> draft = draft.copy(triggers = draft.triggers + TriggerSpec(spec.type, spec.defaults()))
