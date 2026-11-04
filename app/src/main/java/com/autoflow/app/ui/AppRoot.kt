@@ -1,5 +1,7 @@
 package com.autoflow.app.ui
 
+import android.content.Intent
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -10,6 +12,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +37,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
@@ -43,6 +48,8 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.CardDefaults
@@ -66,6 +73,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -141,6 +149,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onStop = { vm.stop(it) },
                 onStopAll = { vm.stopAll() },
                 runningIds = runningIds,
+                onClone = { vm.clone(it) },
+                onShareJson = { vm.macroJson(it) },
                 onToggle = { m, on -> vm.save(m.copy(enabled = on)) },
                 onDelete = { vm.delete(it) },
                 onLogs = { route = Route.Logs },
@@ -387,6 +397,8 @@ private fun MacroListScreen(
     onStop: (Macro) -> Unit,
     onStopAll: () -> Unit,
     runningIds: Set<String>,
+    onClone: (Macro) -> Unit,
+    onShareJson: (Macro) -> String,
     onToggle: (Macro, Boolean) -> Unit,
     onDelete: (Macro) -> Unit,
     onLogs: () -> Unit,
@@ -634,6 +646,8 @@ private fun MacroListScreen(
                                     onStop = onStop,
                                     onToggle = onToggle,
                                     onDelete = onDelete,
+                                    onClone = onClone,
+                                    onShareJson = onShareJson,
                                 )
                             }
                         }
@@ -648,6 +662,8 @@ private fun MacroListScreen(
                             onStop = onStop,
                             onToggle = onToggle,
                             onDelete = onDelete,
+                            onClone = onClone,
+                            onShareJson = onShareJson,
                         )
                     }
                 }
@@ -725,6 +741,7 @@ private fun EmptyState(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MacroCard(
     macro: Macro,
@@ -734,13 +751,20 @@ private fun MacroCard(
     onStop: (Macro) -> Unit,
     onToggle: (Macro, Boolean) -> Unit,
     onDelete: (Macro) -> Unit,
+    onClone: (Macro) -> Unit,
+    onShareJson: (Macro) -> String,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val accent = Brand.accents[macro.accent.coerceIn(0, Brand.accents.lastIndex)]
     Card(
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
-        modifier = Modifier.fillMaxWidth().clickable { onOpen(macro) },
+        modifier = Modifier.fillMaxWidth().combinedClickable(
+            onClick = { onOpen(macro) },
+            onLongClick = { menuOpen = true },
+        ),
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -785,6 +809,36 @@ private fun MacroCard(
                 } else {
                     IconButton(onClick = { onRun(macro) }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "运行", tint = Brand.Secondary)
+                    }
+                }
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "更多", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(if (running) "停止运行" else "测试运行") },
+                            onClick = { menuOpen = false; if (running) onStop(macro) else onRun(macro) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("克隆") },
+                            onClick = { menuOpen = false; onClone(macro) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("分享（JSON）") },
+                            onClick = {
+                                menuOpen = false
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, onShareJson(macro))
+                                }
+                                runCatching { context.startActivity(Intent.createChooser(intent, "分享宏")) }
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("删除") },
+                            onClick = { menuOpen = false; onDelete(macro) },
+                        )
                     }
                 }
                 IconButton(onClick = { onDelete(macro) }) {

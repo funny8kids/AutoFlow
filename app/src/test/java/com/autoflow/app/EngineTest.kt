@@ -3,9 +3,12 @@ package com.autoflow.app
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.autoflow.app.core.ActionSpec
+import com.autoflow.app.core.ConstraintSpec
 import com.autoflow.app.core.Macro
 import com.autoflow.app.core.RunContext
 import com.autoflow.app.core.Variable
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -57,6 +60,40 @@ class EngineTest {
         engine().execute(macro, ctx)
         assertEquals(null, ctx.locals["y"])
         assertEquals("done", ctx.locals["z"])
+    }
+
+    /** 约束 OR 模式：任一满足即通过（对齐 MacroDroid constraintAndOrSpinner）。 */
+    @Test
+    fun constraintOrModePassesWhenOneSatisfies() = runBlocking {
+        val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+        val wrongMonth = month % 12 + 1
+        val macro = Macro(
+            name = "or-约束",
+            constraintMode = "or",
+            constraints = listOf(
+                ConstraintSpec("monthEquals", mapOf("month" to wrongMonth.toString())),  // 恒为 false
+                ConstraintSpec("monthEquals", mapOf("month" to month.toString())),       // 恒为 true
+            ),
+        )
+        val ctx = RunContext(macro, "manual", "test", globals = mutableMapOf())
+        assertTrue(engine().constraintsPass(macro, ctx))
+    }
+
+    /** 约束 AND 模式：一个不满足即整体不通过。 */
+    @Test
+    fun constraintAndModeFailsWhenOneFails() = runBlocking {
+        val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+        val wrongMonth = month % 12 + 1
+        val macro = Macro(
+            name = "and-约束",
+            constraintMode = "and",
+            constraints = listOf(
+                ConstraintSpec("monthEquals", mapOf("month" to wrongMonth.toString())),
+                ConstraintSpec("monthEquals", mapOf("month" to month.toString())),
+            ),
+        )
+        val ctx = RunContext(macro, "manual", "test", globals = mutableMapOf())
+        assertFalse(engine().constraintsPass(macro, ctx))
     }
 
     @Test

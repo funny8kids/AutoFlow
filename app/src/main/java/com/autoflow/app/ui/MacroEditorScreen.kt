@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -168,10 +169,25 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
             item {
                 SectionCard(
                     title = "条件",
-                    subtitle = "全部满足才执行（多个为「与」）",
+                    subtitle = if (draft.constraintMode == "or") "任一满足即执行（「或」）" else "全部满足才执行（「与」）",
                     accent = Brand.Tertiary,
                     trailing = { AddButton { catalogFor = SectionKind.CONSTRAINT } },
                 ) {
+                    if (draft.constraints.size >= 2) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = draft.constraintMode != "or",
+                                onClick = { draft = draft.copy(constraintMode = "and") },
+                                label = { Text("全部满足（与）") },
+                            )
+                            FilterChip(
+                                selected = draft.constraintMode == "or",
+                                onClick = { draft = draft.copy(constraintMode = "or") },
+                                label = { Text("任一满足（或）") },
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                     if (draft.constraints.isEmpty()) {
                         EmptyHint("没有条件限制")
                     } else {

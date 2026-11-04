@@ -33,6 +33,43 @@ class AppViewModel : ViewModel() {
 
     fun stop(macro: Macro) = app.engine.cancel(macro.id)
     fun stopAll() = app.engine.cancelAll()
+
+    /** 克隆宏：新 id、默认禁用、名称加「副本」。 */
+    fun clone(macro: Macro) = viewModelScope.launch(Dispatchers.IO) {
+        app.store.upsert(
+            macro.copy(
+                id = java.util.UUID.randomUUID().toString(),
+                name = macro.name + " 副本",
+                enabled = false,
+                createdAt = System.currentTimeMillis(),
+                modifiedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    private val json = kotlinx.serialization.json.Json {
+        prettyPrint = true
+        encodeDefaults = true
+        ignoreUnknownKeys = true
+    }
+
+    /** 单宏导出为 JSON 文本（用于分享）。 */
+    fun macroJson(macro: Macro): String =
+        runCatching { json.encodeToString(Macro.serializer(), macro) }.getOrDefault("")
+
+    /** 从分享的 JSON 恢复宏（新 id，默认禁用）。 */
+    fun importMacro(text: String) = viewModelScope.launch(Dispatchers.IO) {
+        runCatching { json.decodeFromString(Macro.serializer(), text) }.getOrNull()?.let {
+            app.store.upsert(
+                it.copy(
+                    id = java.util.UUID.randomUUID().toString(),
+                    enabled = false,
+                    createdAt = System.currentTimeMillis(),
+                    modifiedAt = System.currentTimeMillis(),
+                )
+            )
+        }
+    }
     val logs: StateFlow<List<LogEntry>> = app.logs.logs
     val globalVars: StateFlow<List<Variable>> = app.globals.vars
 

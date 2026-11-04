@@ -15,6 +15,8 @@ data class Macro(
     val isBlock: Boolean = false,
     val triggers: List<TriggerSpec> = emptyList(),
     val constraints: List<ConstraintSpec> = emptyList(),
+    /** 约束组合方式：and = 全部满足；or = 任一满足（对齐 MacroDroid 的 constraintAndOrSpinner） */
+    val constraintMode: String = "and",
     val actions: List<ActionSpec> = emptyList(),
     val variables: List<Variable> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),

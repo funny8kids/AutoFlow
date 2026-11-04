@@ -171,8 +171,14 @@ class MacroEngine(private val app: AutoFlowApp) {
         app.logs.info(macro.name, "← 退出动作块「$name」")
     }
 
-    private suspend fun constraintsPass(macro: Macro, ctx: RunContext): Boolean =
-        macro.constraints.all { c -> executors.checkConstraint(c, ctx) }
+    internal suspend fun constraintsPass(macro: Macro, ctx: RunContext): Boolean {
+        if (macro.constraints.isEmpty()) return true
+        return if (macro.constraintMode.equals("or", ignoreCase = true)) {
+            macro.constraints.any { c -> executors.checkConstraint(c, ctx) }
+        } else {
+            macro.constraints.all { c -> executors.checkConstraint(c, ctx) }
+        }
+    }
 
     private fun evalCondition(action: ActionSpec, ctx: RunContext): Boolean {
         val name = action.params["name"].orEmpty()
