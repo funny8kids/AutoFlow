@@ -192,7 +192,7 @@ fun SettingsScreen(
                     CapabilityRow("无障碍", "UI 交互动作", caps.accessibility)
                     CapabilityRow(
                         "Shizuku",
-                        if (caps.shizukuInstalled) "已安装，可申请 ADB 权限" else "未安装 Shizuku App",
+                        if (caps.shizukuInstalled) "已安装（执行链路未接入，可先用 Root）" else "未安装 Shizuku App",
                         shizukuGranted,
                     )
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

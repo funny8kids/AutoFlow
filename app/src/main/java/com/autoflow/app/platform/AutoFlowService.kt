@@ -30,6 +30,7 @@ class AutoFlowService : Service() {
         override fun run() {
             runCatching { pollForeground() }
             runCatching { pollMusic() }
+            runCatching { pollCalendar() }
             handler.postDelayed(this, 3000)
         }
     }
@@ -37,12 +38,29 @@ class AutoFlowService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        startForeground(NOTIF_ID, buildNotification())
+        if (!safeStartForeground()) {
+            stopSelf()
+            return
+        }
         handler.post(poller)
     }
 
+    /** 前台服务启动在 Android 12+ 可能被系统拒绝，失败时安静退出而不是崩溃。 */
+    private fun safeStartForeground(): Boolean = try {
+        startForeground(NOTIF_ID, buildNotification())
+        true
+    } catch (t: Throwable) {
+        runCatching {
+            android.util.Log.w("AutoFlow", "startForeground failed: ${t.message}")
+        }
+        false
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        runCatching { startForeground(NOTIF_ID, buildNotification()) }
+        if (!safeStartForeground()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -102,6 +120,39 @@ class AutoFlowService : Service() {
         }
     }
 
+    private var calendarLastPoll = 0L
+
+    private fun pollCalendar() {
+        val now = System.currentTimeMillis()
+        if (now - calendarLastPoll < 30_000) return
+        calendarLastPoll = now
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val watched = app.store.macros.value.any { m ->
+            m.enabled && m.triggers.any { it.type == "calendarEvent" }
+        }
+        if (!watched) return
+        if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+
+        runCatching {
+            val end = now + 5 * 60_000L
+            val uri = android.provider.CalendarContract.Instances.CONTENT_URI.buildUpon()
+                .appendPath(now.toString())
+                .appendPath(end.toString())
+                .build()
+            val projection = arrayOf(
+                android.provider.CalendarContract.Instances.EVENT_ID,
+                android.provider.CalendarContract.Instances.BEGIN,
+            )
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    app.triggers.onCalendarEvent(cursor.getLong(0), cursor.getLong(1))
+                }
+            }
+        }
+    }
+
     private fun pollMusic() {
         val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
         val watched = app.store.macros.value.any { m ->
@@ -111,6 +162,7 @@ class AutoFlowService : Service() {
         val am = getSystemService(android.media.AudioManager::class.java) ?: return
         val playing = am.isMusicActive
         if (playing && !lastMusic) app.triggers.onMusicActive()
+        if (playing != lastMusic) app.triggers.onMediaPlaybackChanged(playing)
         lastMusic = playing
     }
 

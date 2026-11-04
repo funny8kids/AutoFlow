@@ -1,39 +1,26 @@
 package com.autoflow.app.platform
 
-import android.content.pm.PackageManager
-import rikka.shizuku.Shizuku
+import android.content.Context
+import com.autoflow.app.AutoFlowApp
 
 /**
- * Shizuku（ADB 权限）探测与授权。
+ * Shizuku 探测（仅检查是否安装）。
  *
- * 说明：Shizuku 13.x 的 api 包不再对外暴露命令执行接口（newProcess 已非 public），
- * 因此这里只负责「是否可用 + 申请授权」；实际命令执行仍走 Root 或普通 shell。
+ * 说明：Shizuku 13.x 的 api 包不再对外暴露命令执行接口，且其 ContentProvider
+ * 会在 Application 之前初始化，带来启动崩溃风险，因此本项目不引入该 SDK。
+ * 如需 ADB 权限执行，请使用 Root 通道，或在后续版本接入 Shizuku UserService。
  */
 object ShizukuShell {
 
-    const val PERMISSION_REQUEST_CODE = 4101
+    fun isInstalled(context: Context): Boolean = runCatching {
+        context.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
+        true
+    }.getOrDefault(false)
 
-    @Volatile
-    private var lastGranted: Boolean? = null
+    fun hasPermission(): Boolean = false
 
-    private val resultListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
-        lastGranted = grantResult == PackageManager.PERMISSION_GRANTED
-    }
+    fun available(): Boolean = runCatching { isInstalled(AutoFlowApp.app()) }.getOrDefault(false)
 
-    fun isBinderAlive(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
-
-    fun hasPermission(): Boolean = runCatching {
-        isBinderAlive() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-    }.getOrDefault(lastGranted == true)
-
-    fun available(): Boolean = hasPermission()
-
-    /** 注册监听 + 发起授权请求（不需要 Activity 回调）。 */
-    fun requestPermission() {
-        runCatching {
-            if (!isBinderAlive()) return
-            Shizuku.addRequestPermissionResultListener(resultListener)
-            Shizuku.requestPermission(PERMISSION_REQUEST_CODE)
-        }
-    }
+    /** 预留：后续接入 UserService 时实现授权流程。 */
+    fun requestPermission() = Unit
 }

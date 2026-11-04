@@ -801,6 +801,86 @@ class ActionExecutors(private val app: AutoFlowApp) {
                 val stat = android.os.StatFs(app.filesDir.path)
                 (stat.totalBytes / 1024 / 1024).toString()
             }.getOrDefault("0")
+            // ---- 界面 / 音量扩展 ----
+            "setWallpaper" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val wm = android.app.WallpaperManager.getInstance(app)
+                    android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                        ?.let { wm.setBitmap(it) }
+                }.onFailure { app.logs.error(macro.name, "设置壁纸失败: ${it.message}") }
+            }
+            "setMediaVolumePercent" -> runCatching {
+                val am = app.getSystemService(AudioManager::class.java)
+                val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val percent = (p["percent"]?.toIntOrNull() ?: 50).coerceIn(0, 100)
+                am.setStreamVolume(AudioManager.STREAM_MUSIC, max * percent / 100, 0)
+            }
+            "urlDecode" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                java.net.URLDecoder.decode(magic(p["source"].orEmpty(), ctx), "UTF-8")
+            }.getOrDefault("")
+            "hexEncode" -> ctx.locals[p["toVar"].orEmpty()] =
+                magic(p["source"].orEmpty(), ctx).toByteArray().joinToString("") { "%02x".format(it) }
+            "hexDecode" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val hex = magic(p["source"].orEmpty(), ctx).trim()
+                String(hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+            }.getOrDefault("")
+            "fileReadBase64" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = File(app.filesDir, p["file"].orEmpty()).readBytes()
+                    ctx.locals[p["toVar"].orEmpty()] =
+                        android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                }
+            }
+            "fileWriteBase64" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = android.util.Base64.decode(
+                        magic(p["source"].orEmpty(), ctx), android.util.Base64.NO_WRAP,
+                    )
+                    File(app.filesDir, p["file"].orEmpty()).writeBytes(bytes)
+                }.onFailure { app.logs.error(macro.name, "写入失败: ${it.message}") }
+            }
+            // ---- 应用信息扩展 ----
+            "getInstalledApps" -> {
+                ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                    @Suppress("DEPRECATION")
+                    app.packageManager.getInstalledPackages(0).map { it.packageName }.joinToString("|")
+                }.getOrDefault("")
+            }
+            "getPackageCount" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                @Suppress("DEPRECATION")
+                app.packageManager.getInstalledPackages(0).size.toString()
+            }.getOrDefault("0")
+            "getRunningApps" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val am = app.getSystemService(android.app.ActivityManager::class.java)
+                am.runningAppProcesses?.map { it.processName }?.distinct()?.joinToString("|").orEmpty()
+            }.getOrDefault("")
+            "getNotificationCount" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                app.getSystemService(NotificationManager::class.java).activeNotifications.size.toString()
+            }.getOrDefault("0")
+            "getWifiBssid" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                @Suppress("DEPRECATION")
+                val wm = app.applicationContext.getSystemService(WifiManager::class.java)
+                wm.connectionInfo?.bssid.orEmpty()
+            }.getOrDefault("")
+            "getMediaVolume" -> ctx.locals[p["toVar"].orEmpty()] = mediaVolume().toString()
+            // ---- UI 全局操作 ----
+            "uiGlobalAction" -> a11y(macro.name, "系统操作") { s ->
+                val code = when (p["action"] ?: "notifications") {
+                    "back" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
+                    "home" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME
+                    "recents" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_RECENTS
+                    "quickSettings" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+                    "powerDialog" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG
+                    "lockScreen" -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+                    else -> android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+                }
+                s.global(code)
+            }
+            "uiTakeScreenshot" -> a11y(macro.name, "截屏") { s ->
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    s.global(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+                } else false
+            }
             "shell" -> shell(macro.name, magic(p["cmd"].orEmpty(), ctx))
             "shellRoot" -> shellPrivileged(macro.name, magic(p["cmd"].orEmpty(), ctx))
             "airplaneMode" -> {
@@ -904,7 +984,7 @@ class ActionExecutors(private val app: AutoFlowApp) {
         }.getOrDefault(true)
         "notificationAccess" -> com.autoflow.app.core.CapabilityDetector.notificationListenerEnabled(app)
         "rootAvailable" -> ShellRunner.isRootAvailable()
-        "shizukuAvailable" -> ShizukuShell.hasPermission()
+        "shizukuAvailable" -> ShizukuShell.isInstalled(app)
         "batteryFull" -> batteryLevel() >= 100
         "chargingAc" -> chargingType() == android.os.BatteryManager.BATTERY_PLUGGED_AC
         "chargingUsb" -> chargingType() == android.os.BatteryManager.BATTERY_PLUGGED_USB
@@ -943,6 +1023,29 @@ class ActionExecutors(private val app: AutoFlowApp) {
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
         }.getOrDefault(false)
         "powerSaveOff" -> app.getSystemService(PowerManager::class.java)?.isPowerSaveMode != true
+        "vpnConnectedC" -> runCatching {
+            val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
+        }.getOrDefault(false)
+        "mediaPlaying" -> runCatching {
+            app.getSystemService(AudioManager::class.java).isMusicActive
+        }.getOrDefault(false)
+        "autoRotate" -> runCatching {
+            android.provider.Settings.System.getInt(
+                app.contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION, 0,
+            ) == 1
+        }.getOrDefault(false)
+        "notificationCountAbove" -> runCatching {
+            app.getSystemService(NotificationManager::class.java).activeNotifications.size >
+                (c.params["count"]?.toIntOrNull() ?: 3)
+        }.getOrDefault(false)
+        "thermalBelow" -> runCatching {
+            if (Build.VERSION.SDK_INT >= 29) {
+                app.getSystemService(PowerManager::class.java).currentThermalStatus < 3
+            } else true
+        }.getOrDefault(true)
+        "screenDim" -> screenBrightness() < 50
         else -> true
     }
 

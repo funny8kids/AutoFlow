@@ -48,6 +48,9 @@ class TriggerManager(
     private var volumeObserver: android.database.ContentObserver? = null
     private var ringerReceiver: BroadcastReceiver? = null
     private var lastHour = -1
+    private var lastSsid: String? = null
+    private var lastVpn = false
+    private var lastForegroundPkg: String? = null
     private var lastBrightness = -1
     private var lastVolume = -1
     private val sensorManager by lazy { app.getSystemService(SensorManager::class.java) }
@@ -208,9 +211,23 @@ class TriggerManager(
         else dispatch("mobileDataDisconnected", "移动数据断开")
         if (!wifi) dispatch("wifiLost", "WiFi 已断开")
 
+        val vpn = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+        if (vpn != lastVpn) {
+            lastVpn = vpn
+            if (vpn) dispatch("vpnConnected", "VPN 已连接") else dispatch("vpnDisconnected", "VPN 已断开")
+        }
+
         val ssid = currentSsid()
-        if (ssid != null) dispatch("wifiSsid", "WiFi $ssid") { t ->
-            t.params["ssid"].orEmpty().equals(ssid, ignoreCase = true)
+        if (ssid != null) {
+            if (ssid != lastSsid) {
+                lastSsid = ssid
+                dispatch("wifiSsidChanged", "WiFi 切换到 $ssid")
+            }
+            dispatch("wifiSsid", "WiFi $ssid") { t ->
+                t.params["ssid"].orEmpty().equals(ssid, ignoreCase = true)
+            }
+        } else {
+            lastSsid = null
         }
     }
 
@@ -591,7 +608,11 @@ class TriggerManager(
                 AutoFlowService.start(app)
             }
             Intent.ACTION_SHUTDOWN -> dispatch("shutdown", "关机")
-            Intent.ACTION_SCREEN_ON -> dispatch("screen", "屏幕亮起") { it.params["state"] != "off" }
+            Intent.ACTION_SCREEN_ON -> {
+                dispatch("screen", "屏幕亮起") { it.params["state"] != "off" }
+                val km = app.getSystemService(android.app.KeyguardManager::class.java)
+                if (km?.isKeyguardLocked != true) dispatch("screenOnUnlocked", "亮屏并解锁")
+            }
             Intent.ACTION_SCREEN_OFF -> {
                 dispatch("screen", "屏幕熄灭") { it.params["state"] == "off" }
                 val km = app.getSystemService(android.app.KeyguardManager::class.java)
@@ -736,9 +757,35 @@ class TriggerManager(
     }
 
     fun onAppForeground(packageName: String) {
+        val previous = lastForegroundPkg
+        lastForegroundPkg = packageName
+        if (previous != null && previous != packageName) {
+            dispatch("appLeftForeground", "离开 $previous") { t ->
+                val want = t.params["package"].orEmpty()
+                want.isBlank() || want == previous
+            }
+        }
         dispatch("appForeground", "切换到 $packageName") { t ->
             val want = t.params["package"].orEmpty()
             want.isBlank() || want == packageName
+        }
+    }
+
+    fun onMediaPlaybackChanged(playing: Boolean) {
+        dispatch("mediaPlaybackChanged", if (playing) "开始播放" else "停止播放") { t ->
+            (t.params["state"] ?: "playing") == if (playing) "playing" else "stopped"
+        }
+    }
+
+    private val firedCalendar = mutableSetOf<String>()
+
+    fun onCalendarEvent(eventId: Long, begin: Long) {
+        val key = "$eventId@$begin"
+        if (!firedCalendar.add(key)) return
+        if (firedCalendar.size > 200) firedCalendar.clear()
+        val minutesUntil = ((begin - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(0)
+        dispatch("calendarEvent", "日历事件 $minutesUntil 分钟后") { t ->
+            minutesUntil <= (t.params["minutes"]?.toIntOrNull() ?: 0)
         }
     }
 

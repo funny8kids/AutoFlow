@@ -27,6 +27,7 @@ class AutoFlowApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        installCrashLogger()
         store = MacroStore(this)
         globals = GlobalVarStore(this)
         logs = LogRepository(this)
@@ -38,7 +39,21 @@ class AutoFlowApp : Application() {
             globals.load()
             triggers.refresh()
             com.autoflow.app.platform.QuickWidgetProvider.refresh(this@AutoFlowApp)
-            com.autoflow.app.platform.AutoFlowService.start(this@AutoFlowApp)
+        }
+    }
+
+    /** 把未捕获异常写到 files/crash.log，便于排查启动崩溃。 */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching {
+                val file = java.io.File(filesDir, "crash.log")
+                file.appendText(
+                    "=== ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())} ===\n" +
+                        android.util.Log.getStackTraceString(throwable) + "\n"
+                )
+            }
+            previous?.uncaughtException(thread, throwable)
         }
     }
 

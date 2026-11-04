@@ -14,6 +14,12 @@ import com.autoflow.app.ui.AutoFlowTheme
 
 class MainActivity : ComponentActivity() {
 
+    override fun onResume() {
+        super.onResume()
+        // 应用已在前台，此时启动前台服务不会被系统拒绝
+        com.autoflow.app.platform.AutoFlowService.start(this)
+    }
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
@@ -32,6 +38,8 @@ class MainActivity : ComponentActivity() {
         val wanted = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.POST_NOTIFICATIONS
         wanted += Manifest.permission.RECEIVE_SMS
+        wanted += Manifest.permission.READ_SMS
+        wanted += Manifest.permission.READ_CALENDAR
         wanted += Manifest.permission.READ_PHONE_STATE
         val missing = wanted.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED

@@ -13,14 +13,27 @@ android {
         applicationId = "com.autoflow.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "2.2.0"
+        versionCode = 23
+        versionName = "2.3.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        create("autoflow") {
+            storeFile = rootProject.file("keystore/autoflow.jks")
+            storePassword = "autoflow123"
+            keyAlias = "autoflow"
+            keyPassword = "autoflow123"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("autoflow")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("autoflow")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -49,9 +62,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
