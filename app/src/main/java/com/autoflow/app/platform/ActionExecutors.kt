@@ -1308,6 +1308,62 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     ctx.locals[p["toVar"].orEmpty()] = "${temp}℃"
                 }.onFailure { app.logs.error(macro.name, "天气拉取失败: ${it.message}") }
             }
+            "setLockWallpaper" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    if (android.os.Build.VERSION.SDK_INT >= 24) {
+                        android.app.WallpaperManager.getInstance(app)
+                            .setBitmap(src, null, true, android.app.WallpaperManager.FLAG_LOCK)
+                        app.logs.info(macro.name, "锁屏壁纸已设置")
+                    } else {
+                        app.logs.warn(macro.name, "锁屏壁纸需要 Android 7+")
+                    }
+                    src.recycle()
+                }.onFailure { app.logs.error(macro.name, "设置锁屏壁纸失败: ${it.message}") }
+            }
+            "sendEmailAttachment" -> runCatching {
+                val file = File(app.filesDir, p["file"].orEmpty())
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    app, app.packageName + ".fileprovider", file,
+                )
+                app.startActivity(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "*/*"
+                        putExtra(Intent.EXTRA_EMAIL, arrayOf(p["to"].orEmpty()))
+                        putExtra(Intent.EXTRA_SUBJECT, magic(p["subject"].orEmpty(), ctx))
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_ACTIVITY_NEW_TASK,
+                        )
+                    },
+                )
+            }.onFailure { app.logs.error(macro.name, "邮件调起失败: ${it.message}") }
+            "getPhoneNumber" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    app, android.Manifest.permission.READ_PHONE_STATE,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!granted) return@runCatching ""
+                app.getSystemService(android.telephony.TelephonyManager::class.java)?.line1Number ?: ""
+            }.getOrDefault("")
+            "imageBlur" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val radius = (p["radius"]?.toFloatOrNull() ?: 12f).coerceIn(1f, 50f)
+                    // 缩小再放大 = 快速近似模糊（半径越大采样越小越模糊）
+                    val sample = (src.width / (radius * 2f)).toInt().coerceIn(8, src.width)
+                    val small = android.graphics.Bitmap.createScaledBitmap(
+                        src, sample, (src.height * sample.toFloat() / src.width).toInt().coerceAtLeast(1), true,
+                    )
+                    val out = android.graphics.Bitmap.createScaledBitmap(
+                        small, src.width, src.height, true,
+                    )
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "blurred.jpg" }).outputStream().use {
+                        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    small.recycle(); out.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "模糊失败: ${it.message}") }
+            }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
