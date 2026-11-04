@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
@@ -40,7 +41,10 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -76,6 +80,7 @@ import com.autoflow.app.core.Registry
 import com.autoflow.app.core.Templates
 
 private sealed interface Route {
+    data object Home : Route
     data object List : Route
     data class Edit(val macro: Macro) : Route
     data object Logs : Route
@@ -100,7 +105,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val globalVars by vm.globalVars.collectAsStateWithLifecycle()
     val backupMsg by vm.backupMsg.collectAsStateWithLifecycle()
     val runningIds by vm.runningIds.collectAsStateWithLifecycle()
-    var route by remember { mutableStateOf<Route>(Route.List) }
+    var route by remember { mutableStateOf<Route>(Route.Home) }
 
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
@@ -109,12 +114,25 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         visible = entered,
         enter = fadeIn(tween(360)) + scaleIn(tween(360), initialScale = 0.985f),
     ) {
+    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.weight(1f)) {
     AnimatedContent(
         targetState = route,
         transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
         label = "route",
     ) { screen ->
         when (screen) {
+            is Route.Home -> HomeDashboard(
+                macros = macros,
+                runningCount = runningIds.size,
+                onAi = { vm.resetAiState(); route = Route.Ai },
+                onTemplates = { route = Route.Templates },
+                onQuick = { route = Route.Quick },
+                onBlocks = { route = Route.Blocks },
+                onGlobals = { route = Route.Globals },
+                onLogs = { route = Route.Logs },
+                onCreate = { route = Route.Edit(vm.newMacro()) },
+            )
             is Route.List -> MacroListScreen(
                 macros = macros,
                 onOpen = { route = Route.Edit(it) },
@@ -205,6 +223,158 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         }
     }
     }
+    if (route is Route.Home || route is Route.List || route is Route.Templates || route is Route.Settings) {
+        BottomNavBar(
+            current = route,
+            onSelect = { route = it },
+        )
+    }
+    }
+    }
+}
+
+@Composable
+private fun BottomNavBar(current: Route, onSelect: (Route) -> Unit) {
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+        NavigationBarItem(
+            selected = current is Route.Home,
+            onClick = { onSelect(Route.Home) },
+            icon = { Icon(Icons.Default.Home, contentDescription = null) },
+            label = { Text("首页") },
+        )
+        NavigationBarItem(
+            selected = current is Route.List,
+            onClick = { onSelect(Route.List) },
+            icon = { Icon(Icons.Default.Bolt, contentDescription = null) },
+            label = { Text("宏") },
+        )
+        NavigationBarItem(
+            selected = current is Route.Templates,
+            onClick = { onSelect(Route.Templates) },
+            icon = { Icon(Icons.Default.Star, contentDescription = null) },
+            label = { Text("模板") },
+        )
+        NavigationBarItem(
+            selected = current is Route.Settings,
+            onClick = { onSelect(Route.Settings) },
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            label = { Text("设置") },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeDashboard(
+    macros: List<Macro>,
+    runningCount: Int,
+    onAi: () -> Unit,
+    onTemplates: () -> Unit,
+    onQuick: () -> Unit,
+    onBlocks: () -> Unit,
+    onGlobals: () -> Unit,
+    onLogs: () -> Unit,
+    onCreate: () -> Unit,
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("AutoFlow", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            "让手机自己动起来",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp, 8.dp, 16.dp, 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(Brush.linearGradient(listOf(Brand.Primary, Brand.Secondary)))
+                        .padding(20.dp),
+                ) {
+                    Column {
+                        Text(
+                            if (runningCount > 0) "$runningCount 个宏正在运行" else "一切就绪",
+                            color = Color.White,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${macros.size} 个宏 · ${macros.count { it.enabled }} 个启用",
+                            color = Color.White.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeAction(Icons.Default.AutoAwesome, "AI 生成", Brand.Secondary, onAi, Modifier.weight(1f))
+                    HomeAction(Icons.Default.Star, "模板库", Brand.Primary, onTemplates, Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeAction(Icons.Default.Bolt, "快捷面板", Brand.Primary, onQuick, Modifier.weight(1f))
+                    HomeAction(Icons.Default.Repeat, "动作块", Brand.Tertiary, onBlocks, Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeAction(Icons.Default.Code, "全局变量", Brand.Secondary, onGlobals, Modifier.weight(1f))
+                    HomeAction(Icons.Default.Star, "运行日志", Brand.Tertiary, onLogs, Modifier.weight(1f))
+                }
+            }
+            item {
+                Button(
+                    onClick = onCreate,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(18.dp),
+                ) { Text("＋ 新建宏", style = MaterialTheme.typography.titleMedium) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        modifier = modifier.clickable { onClick() },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(icon, contentDescription = null, tint = tint)
+            Spacer(Modifier.height(8.dp))
+            Text(label, style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -288,13 +458,22 @@ private fun MacroListScreen(
         } else {
             var query by remember { mutableStateOf("") }
             var category by remember { mutableStateOf("全部") }
+            var stateFilter by remember { mutableStateOf("全部") }
+            var collapsed by remember { mutableStateOf(setOf<String>()) }
             val categories = remember(macros) {
                 listOf("全部") + macros.map { it.category.ifBlank { "未分类" } }.distinct()
             }
-            val filtered = remember(macros, query, category) {
+            val filtered = remember(macros, query, category, stateFilter, runningIds) {
                 macros.filter { m ->
                     val cat = m.category.ifBlank { "未分类" }
-                    (category == "全部" || cat == category) &&
+                    val passState = when (stateFilter) {
+                        "已启用" -> m.enabled
+                        "已禁用" -> !m.enabled
+                        "运行中" -> m.id in runningIds
+                        else -> true
+                    }
+                    passState &&
+                        (category == "全部" || cat == category) &&
                         (query.isBlank() || m.name.contains(query, true) || m.description.contains(query, true))
                 }
             }
@@ -391,6 +570,16 @@ private fun MacroListScreen(
                         )
                         Spacer(Modifier.height(8.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(listOf("全部", "已启用", "已禁用", "运行中")) { s ->
+                                FilterChip(
+                                    selected = stateFilter == s,
+                                    onClick = { stateFilter = s },
+                                    label = { Text(s) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(categories) { c ->
                                 FilterChip(
                                     selected = category == c,
@@ -401,16 +590,66 @@ private fun MacroListScreen(
                         }
                     }
                 }
-                items(filtered, key = { it.id }) { macro ->
-                    MacroCard(
-                        macro = macro,
-                        running = macro.id in runningIds,
-                        onOpen = onOpen,
-                        onRun = onRun,
-                        onStop = onStop,
-                        onToggle = onToggle,
-                        onDelete = onDelete,
-                    )
+                if (category == "全部") {
+                    val grouped = filtered.groupBy { it.category.ifBlank { "未分类" } }
+                    grouped.forEach { (cat, list) ->
+                        item(key = "head-${cat}") {
+                            Row(
+                                Modifier.fillMaxWidth().clickable {
+                                    collapsed = if (cat in collapsed) collapsed - cat else collapsed + cat
+                                }.padding(horizontal = 4.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    Modifier.size(8.dp).background(Brand.Primary, RoundedCornerShape(3.dp)),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    cat,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "${list.size}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    if (cat in collapsed) "展开" else "收起",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (cat !in collapsed) {
+                            items(list, key = { it.id }) { macro ->
+                                MacroCard(
+                                    macro = macro,
+                                    running = macro.id in runningIds,
+                                    onOpen = onOpen,
+                                    onRun = onRun,
+                                    onStop = onStop,
+                                    onToggle = onToggle,
+                                    onDelete = onDelete,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filtered, key = { it.id }) { macro ->
+                        MacroCard(
+                            macro = macro,
+                            running = macro.id in runningIds,
+                            onOpen = onOpen,
+                            onRun = onRun,
+                            onStop = onStop,
+                            onToggle = onToggle,
+                            onDelete = onDelete,
+                        )
+                    }
                 }
                 if (filtered.isEmpty()) {
                     item { EmptyHint("没有匹配的宏") }
