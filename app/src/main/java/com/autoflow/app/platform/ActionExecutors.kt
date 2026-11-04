@@ -45,6 +45,7 @@ import java.util.Locale
 class ActionExecutors(private val app: AutoFlowApp) {
 
     private var torchOn = false
+    private var mediaPlayer: android.media.MediaPlayer? = null
     private var tts: TextToSpeech? = null
 
     init {
@@ -679,6 +680,127 @@ class ActionExecutors(private val app: AutoFlowApp) {
                 val health = intent?.getIntExtra(android.os.BatteryManager.EXTRA_HEALTH, 0) ?: 0
                 ctx.locals[p["toVar"].orEmpty()] = "temp=${temp}℃, voltage=${volt}mV, health=$health"
             }
+            // ---- 图片 / 音频 ----
+            "imageInfo" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(app.filesDir, p["file"].orEmpty())
+                    val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeFile(file.path, opts)
+                    ctx.locals[p["toVar"].orEmpty()] = "${opts.outWidth}x${opts.outHeight}, ${file.length()} bytes"
+                }
+            }
+            "imageScale" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val targetW = (p["width"]?.toIntOrNull() ?: 720).coerceIn(16, 4096)
+                    val ratio = targetW.toFloat() / src.width
+                    val scaled = android.graphics.Bitmap.createScaledBitmap(
+                        src, targetW, (src.height * ratio).toInt().coerceAtLeast(1), true,
+                    )
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "scaled.jpg" }).outputStream().use {
+                        scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it)
+                    }
+                    scaled.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "缩放失败: ${it.message}") }
+            }
+            "imageRotate" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val matrix = android.graphics.Matrix().apply { postRotate((p["degrees"]?.toFloatOrNull() ?: 90f)) }
+                    val rotated = android.graphics.Bitmap.createBitmap(
+                        src, 0, 0, src.width, src.height, matrix, true,
+                    )
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "rotated.jpg" }).outputStream().use {
+                        rotated.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it)
+                    }
+                    rotated.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "旋转失败: ${it.message}") }
+            }
+            "audioPlayFile" -> runCatching {
+                audioStopInternal()
+                val file = File(app.filesDir, p["file"].orEmpty())
+                mediaPlayer = android.media.MediaPlayer().apply {
+                    setDataSource(file.path)
+                    prepare()
+                    start()
+                }
+            }.onFailure { app.logs.error(macro.name, "播放失败: ${it.message}") }
+            "audioStop" -> audioStopInternal()
+            // ---- 通知 / 应用 ----
+            "cancelAllNotifications" -> runCatching {
+                app.getSystemService(NotificationManager::class.java).cancelAll()
+            }
+            "getAppVersion" -> {
+                ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                    @Suppress("DEPRECATION")
+                    val info = app.packageManager.getPackageInfo(p["package"].orEmpty(), 0)
+                    info.versionName.orEmpty()
+                }.getOrDefault("")
+            }
+            "isAppRunning" -> {
+                ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                    val am = app.getSystemService(android.app.ActivityManager::class.java)
+                    am.runningAppProcesses?.any { it.processName == p["package"].orEmpty() } == true
+                }.getOrDefault(false).toString()
+            }
+            "getScreenSize" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val dm = app.resources.displayMetrics
+                "${dm.widthPixels}x${dm.heightPixels}"
+            }.getOrDefault("")
+            "getSimOperator" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val tm = app.getSystemService(android.telephony.TelephonyManager::class.java)
+                val name = tm.simOperatorName.ifBlank { tm.networkOperatorName }
+                "$name (${tm.simOperator})"
+            }.getOrDefault("")
+            "openAppStore" -> runCatching {
+                val pkg = p["package"].orEmpty()
+                app.startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }.onFailure {
+                runCatching {
+                    app.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + p["package"].orEmpty()))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+            }
+            "shareFile" -> runCatching {
+                val file = File(app.filesDir, p["file"].orEmpty())
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    app, app.packageName + ".fileprovider", file,
+                )
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                app.startActivity(Intent.createChooser(send, "分享文件").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { app.logs.error(macro.name, "分享失败: ${it.message}") }
+            "wakeLock" -> runCatching {
+                @Suppress("DEPRECATION")
+                val lock = app.getSystemService(PowerManager::class.java)
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "autoflow:manual")
+                lock.acquire(((p["seconds"]?.toLongOrNull() ?: 60L).coerceIn(1, 3600)) * 1000)
+            }
+            "getBatteryHealthText" -> {
+                val intent = app.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                val health = intent?.getIntExtra(android.os.BatteryManager.EXTRA_HEALTH, -1) ?: -1
+                ctx.locals[p["toVar"].orEmpty()] = when (health) {
+                    android.os.BatteryManager.BATTERY_HEALTH_GOOD -> "good"
+                    android.os.BatteryManager.BATTERY_HEALTH_OVERHEAT -> "overheat"
+                    android.os.BatteryManager.BATTERY_HEALTH_DEAD -> "dead"
+                    android.os.BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "over_voltage"
+                    android.os.BatteryManager.BATTERY_HEALTH_COLD -> "cold"
+                    android.os.BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "unspecified_failure"
+                    else -> "unknown"
+                }
+            }
+            "getStorageTotal" -> ctx.locals[p["toVar"].orEmpty()] = runCatching {
+                val stat = android.os.StatFs(app.filesDir.path)
+                (stat.totalBytes / 1024 / 1024).toString()
+            }.getOrDefault("0")
             "shell" -> shell(macro.name, magic(p["cmd"].orEmpty(), ctx))
             "shellRoot" -> shellPrivileged(macro.name, magic(p["cmd"].orEmpty(), ctx))
             "airplaneMode" -> {
@@ -801,10 +923,35 @@ class ActionExecutors(private val app: AutoFlowApp) {
             (c.params["day"]?.toIntOrNull() ?: 1)
         "monthEquals" -> java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1 ==
             (c.params["month"]?.toIntOrNull() ?: 1)
+        "carMode" -> app.getSystemService(android.app.UiModeManager::class.java)
+            ?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_CAR
+        "deskMode" -> app.getSystemService(android.app.UiModeManager::class.java)
+            ?.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_DESK
+        "nfcEnabled" -> runCatching {
+            android.nfc.NfcAdapter.getDefaultAdapter(app)?.isEnabled == true
+        }.getOrDefault(false)
+        "locationEnabled" -> runCatching {
+            android.provider.Settings.Secure.getInt(
+                app.contentResolver, android.provider.Settings.Secure.LOCATION_MODE, 0,
+            ) != 0
+        }.getOrDefault(false)
+        "volumeMuted" -> mediaVolume() == 0
+        "batteryPluggedAny" -> chargingType() != 0
+        "mobileDataEnabled" -> runCatching {
+            val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)
+        }.getOrDefault(false)
+        "powerSaveOff" -> app.getSystemService(PowerManager::class.java)?.isPowerSaveMode != true
         else -> true
     }
 
     // ---------------- 基础能力 ----------------
+
+    private fun audioStopInternal() {
+        runCatching { mediaPlayer?.let { if (it.isPlaying) it.stop(); it.release() } }
+        mediaPlayer = null
+    }
 
     private fun toast(text: String) = main { Toast.makeText(it, text, Toast.LENGTH_SHORT).show() }
 

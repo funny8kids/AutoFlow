@@ -42,6 +42,11 @@ class AutoFlowApp : Application() {
         }
     }
 
+    override fun onLowMemory() {
+        super.onLowMemory()
+        runCatching { triggers.onLowMemory() }
+    }
+
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(NotificationManager::class.java)

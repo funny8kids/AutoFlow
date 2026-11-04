@@ -195,10 +195,19 @@ class TriggerManager(
     }
 
     private fun handleNetwork() {
-        val online = networkAvailable()
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        val online = caps?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        val wifi = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+        val cellular = caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true
+
         dispatch("connectivity", if (online) "网络可用" else "网络断开") { t ->
             (t.params["state"] ?: "online") == if (online) "online" else "offline"
         }
+        if (cellular) dispatch("mobileDataConnected", "移动数据已连接")
+        else dispatch("mobileDataDisconnected", "移动数据断开")
+        if (!wifi) dispatch("wifiLost", "WiFi 已断开")
+
         val ssid = currentSsid()
         if (ssid != null) dispatch("wifiSsid", "WiFi $ssid") { t ->
             t.params["ssid"].orEmpty().equals(ssid, ignoreCase = true)
@@ -592,6 +601,24 @@ class TriggerManager(
             Intent.ACTION_BATTERY_OKAY -> dispatch("batteryOkay", "电量恢复正常")
             Intent.ACTION_WALLPAPER_CHANGED -> dispatch("wallpaperChanged", "壁纸更换")
             "android.intent.action.SIM_STATE_CHANGED" -> dispatch("simStateChanged", "SIM 卡状态变化")
+            "android.intent.action.PACKAGE_SUSPENDED" -> {
+                val pkg = intent.data?.schemeSpecificPart ?: return
+                dispatch("packageSuspended", "应用被暂停: $pkg") { t ->
+                    val want = t.params["package"].orEmpty()
+                    want.isBlank() || want == pkg
+                }
+            }
+            "android.intent.action.PACKAGE_UNSUSPENDED" -> {
+                val pkg = intent.data?.schemeSpecificPart ?: return
+                dispatch("packageUnsuspended", "应用已恢复: $pkg") { t ->
+                    val want = t.params["package"].orEmpty()
+                    want.isBlank() || want == pkg
+                }
+            }
+            android.app.UiModeManager.ACTION_ENTER_CAR_MODE -> dispatch("carModeEnter", "进入车载模式")
+            android.app.UiModeManager.ACTION_EXIT_CAR_MODE -> dispatch("carModeExit", "退出车载模式")
+            android.app.UiModeManager.ACTION_ENTER_DESK_MODE -> dispatch("deskModeEnter", "进入桌面模式")
+            android.app.UiModeManager.ACTION_EXIT_DESK_MODE -> dispatch("deskModeExit", "退出桌面模式")
             Intent.ACTION_CONFIGURATION_CHANGED -> {
                 val o = app.resources.configuration.orientation
                 val landscape = o == android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -727,6 +754,10 @@ class TriggerManager(
             val want = t.params["text"].orEmpty()
             want.isBlank() || text.contains(want, ignoreCase = true)
         }
+    }
+
+    fun onLowMemory() {
+        dispatch("lowMemory", "系统内存不足")
     }
 
     fun onWifiSignal(rssi: Int) {
