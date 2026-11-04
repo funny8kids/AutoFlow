@@ -164,6 +164,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
             is Route.Edit -> MacroEditorScreen(
                 initial = screen.macro,
+                isRunning = screen.macro.id in runningIds,
+                onTestRun = { vm.run(screen.macro) },
+                onStopTest = { vm.stop(screen.macro) },
                 onBack = { route = Route.List },
                 onSave = {
                     vm.save(it)

@@ -1,6 +1,7 @@
 package com.autoflow.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,11 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -49,7 +54,14 @@ private enum class SectionKind { TRIGGER, CONSTRAINT, ACTION }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Unit) {
+fun MacroEditorScreen(
+    initial: Macro,
+    onBack: () -> Unit,
+    onSave: (Macro) -> Unit,
+    isRunning: Boolean = false,
+    onTestRun: () -> Unit = {},
+    onStopTest: () -> Unit = {},
+) {
     var draft by remember { mutableStateOf(initial) }
     var catalogFor by remember { mutableStateOf<SectionKind?>(null) }
     val prefs = remember { com.autoflow.app.AutoFlowApp.app().getSharedPreferences("autoflow_runtime", android.content.Context.MODE_PRIVATE) }
@@ -57,6 +69,18 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
         mutableStateOf(prefs.getString("recent_items", "")?.split("|")?.filter { it.isNotBlank() } ?: emptyList())
     }
     var editing by remember { mutableStateOf<Triple<SectionKind, Int, ItemSpec>?>(null) }
+    val actionDepths = remember(draft.actions) {
+        val list = mutableListOf<Int>()
+        var d = 0
+        draft.actions.forEach { a ->
+            when (a.type) {
+                "loop", "if" -> { list.add(d); d += 1 }
+                "endloop", "endif" -> { d = (d - 1).coerceAtLeast(0); list.add(d) }
+                else -> list.add(d)
+            }
+        }
+        list
+    }
     var showVarDialog by remember { mutableStateOf(false) }
     var editingVarIndex by remember { mutableStateOf(-1) }
 
@@ -76,6 +100,13 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
                     }
                 },
                 actions = {
+                    IconButton(onClick = { if (isRunning) onStopTest() else onTestRun() }) {
+                        Icon(
+                            if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = if (isRunning) "停止运行" else "测试运行",
+                            tint = if (isRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     TextButton(onClick = { onSave(draft) }) {
                         Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.width(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -91,6 +122,27 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
             contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 40.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            if (isRunning) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "该宏正在运行",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = onStopTest) {
+                                Text("停止", color = MaterialTheme.colorScheme.onErrorContainer)
+                            }
+                        }
+                    }
+                }
+            }
             item {
                 OutlinedTextField(
                     value = draft.name,
@@ -148,7 +200,7 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
             if (!draft.isBlock) {
             item {
                 SectionCard(
-                    title = "触发器",
+                    title = "触发器 · ${draft.triggers.size}",
                     subtitle = "什么时候启动这个宏（多个为「或」）",
                     accent = Brand.Primary,
                     trailing = { AddButton { catalogFor = SectionKind.TRIGGER } },
@@ -172,7 +224,7 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
 
             item {
                 SectionCard(
-                    title = "条件",
+                    title = "条件 · ${draft.constraints.size}",
                     subtitle = if (draft.constraintMode == "or") "任一满足即执行（「或」）" else "全部满足才执行（「与」）",
                     accent = Brand.Tertiary,
                     trailing = { AddButton { catalogFor = SectionKind.CONSTRAINT } },
@@ -214,7 +266,7 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
 
             item {
                 SectionCard(
-                    title = "动作",
+                    title = "动作 · ${draft.actions.size}",
                     subtitle = "按顺序执行，共 ${draft.actions.size} 个",
                     accent = Brand.Secondary,
                     trailing = { AddButton { catalogFor = SectionKind.ACTION } },
@@ -223,14 +275,16 @@ fun MacroEditorScreen(initial: Macro, onBack: () -> Unit, onSave: (Macro) -> Uni
                         EmptyHint("还没有动作，点 + 添加")
                     } else {
                         draft.actions.forEachIndexed { index, a ->
-                            ItemRow(
-                                spec = Registry.action(a.type),
-                                params = a.params,
-                                accent = Brand.Secondary,
-                                index = index + 1,
-                                onEdit = { Registry.action(a.type)?.let { editing = Triple(SectionKind.ACTION, index, it) } },
-                                onRemove = { draft = draft.copy(actions = draft.actions.filterIndexed { i, _ -> i != index }) },
-                            )
+                            Box(Modifier.padding(start = ((actionDepths.getOrNull(index) ?: 0) * 14).dp)) {
+                                ItemRow(
+                                    spec = Registry.action(a.type),
+                                    params = a.params,
+                                    accent = Brand.Secondary,
+                                    index = index + 1,
+                                    onEdit = { Registry.action(a.type)?.let { editing = Triple(SectionKind.ACTION, index, it) } },
+                                    onRemove = { draft = draft.copy(actions = draft.actions.filterIndexed { i, _ -> i != index }) },
+                                )
+                            }
                         }
                     }
                 }
