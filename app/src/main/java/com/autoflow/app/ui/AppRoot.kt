@@ -122,11 +122,29 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val globalVars by vm.globalVars.collectAsStateWithLifecycle()
     val backupMsg by vm.backupMsg.collectAsStateWithLifecycle()
     val runningIds by vm.runningIds.collectAsStateWithLifecycle()
+    val prefs = remember {
+        com.autoflow.app.AutoFlowApp.app().getSharedPreferences(
+            com.autoflow.app.AutoFlowApp.PREFS,
+            android.content.Context.MODE_PRIVATE,
+        )
+    }
+    var onboarding by remember { mutableStateOf(!prefs.getBoolean("onboarding_done", false)) }
     var route by remember { mutableStateOf<Route>(Route.Home) }
 
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
 
+    if (onboarding) {
+        OnboardingScreen(
+            installedNames = macros.map { it.name }.toSet(),
+            onInstallTemplate = { vm.save(it.build()) },
+            onDone = {
+                prefs.edit().putBoolean("onboarding_done", true).apply()
+                onboarding = false
+            },
+        )
+        return
+    }
     AnimatedVisibility(
         visible = entered,
         enter = fadeIn(tween(360)) + scaleIn(tween(360), initialScale = 0.985f),
