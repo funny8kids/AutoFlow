@@ -1215,6 +1215,27 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     app.logs.info(macro.name, "→ 调用宏「$name」")
                 } else app.logs.error(macro.name, "找不到宏：$name")
             }
+            "enableMacro" -> {
+                val name = magic(p["name"].orEmpty(), ctx)
+                val target = app.store.macros.value.firstOrNull { it.name == name && it.id != macro.id }
+                if (target != null) {
+                    app.store.upsert(target.copy(enabled = true))
+                    app.logs.info(macro.name, "已启用宏「$name」")
+                } else app.logs.error(macro.name, "找不到宏：$name")
+            }
+            "disableMacro" -> {
+                val name = magic(p["name"].orEmpty(), ctx)
+                val target = app.store.macros.value.firstOrNull { it.name == name && it.id != macro.id }
+                if (target != null) {
+                    app.store.upsert(target.copy(enabled = false))
+                    app.logs.info(macro.name, "已禁用宏「$name」")
+                } else app.logs.error(macro.name, "找不到宏：$name")
+            }
+            "disableAllOthers" -> {
+                val others = app.store.macros.value.filter { it.id != macro.id && it.enabled }
+                others.forEach { app.store.upsert(it.copy(enabled = false)) }
+                app.logs.info(macro.name, "已禁用其余 ${others.size} 个宏")
+            }
             "imageRoundCorners" -> withContext(Dispatchers.IO) {
                 runCatching {
                     val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
