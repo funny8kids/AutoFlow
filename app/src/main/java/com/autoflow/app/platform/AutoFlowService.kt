@@ -191,6 +191,13 @@ class AutoFlowService : Service() {
         private const val NOTIF_ID = 1001
 
         fun start(context: Context) {
+            // Android 13+ 未授予通知权限时不启动前台服务，避免无通知导致的异常
+            if (Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
             runCatching {
                 ContextCompat.startForegroundService(context, Intent(context, AutoFlowService::class.java))
             }
