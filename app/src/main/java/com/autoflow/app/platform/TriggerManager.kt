@@ -877,6 +877,12 @@ class TriggerManager(
         }
     }
 
+    fun onRoamingChange(on: Boolean) {
+        dispatch("roamingChanged", if (on) "漫游已开启" else "漫游已关闭") { t ->
+            (t.params["state"] ?: "on") == if (on) "on" else "off"
+        }
+    }
+
     fun onLocationServiceChange(on: Boolean) {
         dispatch("locationServiceChange", if (on) "定位已开启" else "定位已关闭") { t ->
             (t.params["state"] ?: "on") == if (on) "on" else "off"

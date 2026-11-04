@@ -35,6 +35,7 @@ class AutoFlowService : Service() {
             runCatching { pollWeather() }
             runCatching { pollAirQuality() }
             runCatching { pollSystemStates() }
+            runCatching { pollRoaming() }
             handler.postDelayed(this, 3000)
         }
     }
@@ -133,6 +134,7 @@ class AutoFlowService : Service() {
     private var sysStateLastPoll = 0L
     private var lastLocationOn: Boolean? = null
     private var lastDndOn: Boolean? = null
+    private var lastRoaming: Boolean? = null
 
     private fun pollCalendar() {
         val now = System.currentTimeMillis()
@@ -277,6 +279,24 @@ class AutoFlowService : Service() {
                 }
                 lastDndOn = on
             }
+        }
+    }
+
+    /** 漫游状态轮询，30 秒一次，变化时分发。 */
+    private fun pollRoaming() {
+        val now = System.currentTimeMillis()
+        if (now - sysStateLastPoll < 30_000L) return
+        val app = runCatching { AutoFlowApp.app() }.getOrNull() ?: return
+        val watched = app.store.macros.value.any { m ->
+            m.enabled && m.triggers.any { it.type == "roamingChanged" }
+        }
+        if (!watched) return
+        runCatching {
+            val on = getSystemService(android.telephony.TelephonyManager::class.java)?.isNetworkRoaming == true
+            if (lastRoaming != null && on != lastRoaming) {
+                app.triggers.onRoamingChange(on)
+            }
+            lastRoaming = on
         }
     }
 

@@ -1060,6 +1060,68 @@ class ActionExecutors(private val app: AutoFlowApp) {
                     app.logs.info(macro.name, "WiFi 锁已释放")
                 }
             }
+            "imageCropCenter" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val side = minOf(src.width, src.height)
+                    val cropped = android.graphics.Bitmap.createBitmap(
+                        src,
+                        (src.width - side) / 2,
+                        (src.height - side) / 2,
+                        side,
+                        side,
+                    )
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "cropped.jpg" }).outputStream().use {
+                        cropped.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    cropped.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "裁剪失败: ${it.message}") }
+            }
+            "imageFlip" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val m = android.graphics.Matrix().apply {
+                        if ((p["mode"] ?: "h") == "v") postScale(1f, -1f) else postScale(-1f, 1f)
+                    }
+                    val flipped = android.graphics.Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "flipped.jpg" }).outputStream().use {
+                        flipped.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, it)
+                    }
+                    flipped.recycle(); src.recycle()
+                }.onFailure { app.logs.error(macro.name, "翻转失败: ${it.message}") }
+            }
+            "imageCompress" -> withContext(Dispatchers.IO) {
+                runCatching {
+                    val src = android.graphics.BitmapFactory.decodeFile(File(app.filesDir, p["file"].orEmpty()).path)
+                    val quality = (p["quality"]?.toIntOrNull() ?: 60).coerceIn(1, 100)
+                    File(app.filesDir, p["to"].orEmpty().ifBlank { "compressed.jpg" }).outputStream().use {
+                        src.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, it)
+                    }
+                    src.recycle()
+                }.onFailure { app.logs.error(macro.name, "压缩失败: ${it.message}") }
+            }
+            "textPrepend" -> {
+                val name = p["name"].orEmpty()
+                ctx.locals[name] = magic(p["text"].orEmpty(), ctx) + (ctx.locals[name] ?: "")
+            }
+            "textReverse" -> {
+                val name = p["name"].orEmpty()
+                ctx.locals[name] = (ctx.locals[name] ?: "").reversed()
+            }
+            "charCount" -> {
+                val s = magic(p["source"].orEmpty(), ctx)
+                val chars = s.length
+                val words = s.trim().split("\\s+".toRegex()).count { it.isNotBlank() }
+                ctx.locals[p["toVar"].orEmpty()] = "chars=$chars words=$words"
+            }
+            "delayRandom" -> delay(
+                ((p["minSeconds"]?.toLongOrNull() ?: 1L).coerceIn(0, 600) * 1000L) +
+                    kotlin.random.Random.nextLong(
+                        0L,
+                        ((p["maxSeconds"]?.toLongOrNull() ?: 5L).coerceIn(0, 600) * 1000L).coerceAtLeast(1L),
+                    ).coerceAtMost(60_000L),
+            )
+            "toastLong" -> main { Toast.makeText(it, magic(p["text"].orEmpty(), ctx), Toast.LENGTH_LONG).show() }
             // ---- 界面 / 音量扩展 ----
             "setWallpaper" -> withContext(Dispatchers.IO) {
                 runCatching {
