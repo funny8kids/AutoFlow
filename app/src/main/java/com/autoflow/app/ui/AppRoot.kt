@@ -340,11 +340,16 @@ private fun HomeDashboard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                val wave = rememberInfiniteTransition().animateFloat(
-                    initialValue = 0f,
-                    targetValue = (2f * kotlin.math.PI).toFloat(),
-                    animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)),
-                )
+                val wave = if (AnimationPolicy.infiniteAnimationsEnabled) {
+                    rememberInfiniteTransition().animateFloat(
+                        initialValue = 0f,
+                        targetValue = (2f * kotlin.math.PI).toFloat(),
+                        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)),
+                    )
+                } else {
+                    // 单测环境：固定相位，避免无限动画让 waitForIdle() 永不返回
+                    remember { mutableStateOf(0f) }
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -844,11 +849,16 @@ private fun MacroCard(
     var menuOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val accent = Brand.accents[macro.accent.coerceIn(0, Brand.accents.lastIndex)]
-    val pulse = rememberInfiniteTransition().animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
-    )
+    val pulse = if (AnimationPolicy.infiniteAnimationsEnabled) {
+        rememberInfiniteTransition().animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Reverse),
+        )
+    } else {
+        // 单测环境：固定 alpha，避免无限动画让 waitForIdle() 永不返回
+        remember { mutableStateOf(0.95f) }
+    }
     Card(
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),

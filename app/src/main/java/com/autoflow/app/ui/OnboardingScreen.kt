@@ -73,6 +73,8 @@ fun OnboardingScreen(
 
     // 权限状态实时刷新
     LaunchedEffect(pagerState.currentPage, tick) {
+        // 单元测试里禁止无限轮询：Compose 永远等不到 idle，会让 CI 挂十几分钟
+        if (!AnimationPolicy.infiniteAnimationsEnabled) return@LaunchedEffect
         while (true) {
             tick++
             delay(2000)

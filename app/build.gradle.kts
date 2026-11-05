@@ -56,6 +56,14 @@ android {
                         "https://maven.aliyun.com/repository/public",
                     )
                 }
+                // 单测环境关闭无限动画 / 无限轮询（见 ui/AnimationPolicy.kt），
+                // 否则 Compose 的 waitForIdle() 永不返回，CI 会挂十几到几十分钟。
+                it.systemProperty("autoflow.disableInfiniteAnimations", "true")
+                // 打印测试开始 / 通过 / 跳过 / 失败与标准流，便于定位挂住的测试
+                it.testLogging.apply {
+                    events("started", "passed", "skipped", "failed")
+                    showStandardStreams = true
+                }
                 it.maxHeapSize = "2048m"
             }
         }
