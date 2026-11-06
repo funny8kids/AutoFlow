@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
@@ -105,6 +106,7 @@ private sealed interface Route {
     data object Globals : Route
     data object Backup : Route
     data object Quick : Route
+    data object Clicker : Route
     data object Blocks : Route
     data object Settings : Route
     data object Templates : Route
@@ -234,6 +236,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 onRun = { vm.run(it) },
                 onBack = { route = Route.List },
             )
+            is Route.Clicker -> AutoClickerScreen(
+                onBack = { route = Route.List },
+            )
             is Route.Backup -> BackupScreen(
                 lastMessage = backupMsg,
                 onExportText = { pw -> vm.exportText(pw) },
@@ -263,7 +268,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         }
     }
     }
-    if (route is Route.Home || route is Route.List || route is Route.Templates || route is Route.Settings) {
+    if (route is Route.Home || route is Route.List || route is Route.Templates ||
+        route is Route.Settings || route is Route.Clicker
+    ) {
         BottomNavBar(
             current = route,
             onSelect = { route = it },
@@ -299,6 +306,12 @@ private fun BottomNavBar(current: Route, onSelect: (Route) -> Unit) {
             onClick = { onSelect(Route.Settings) },
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             label = { Text("设置") },
+        )
+        NavigationBarItem(
+            selected = current is Route.Clicker,
+            onClick = { onSelect(Route.Clicker) },
+            icon = { Icon(Icons.Default.TouchApp, contentDescription = null) },
+            label = { Text("连点器") },
         )
     }
 }

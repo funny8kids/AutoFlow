@@ -52,6 +52,30 @@ class AutoAccessibilityService : AccessibilityService() {
         )
     }.getOrDefault(false)
 
+    /**
+     * 异步点击：手势真正完成（或被取消）时回调。
+     *
+     * 连点器靠它把每次点击串起来，避免系统拒绝并发手势导致漏点，
+     * 也让「点击周期」算得准：等待时间 = 间隔 - 本次手势耗时。
+     */
+    fun tapAsync(x: Float, y: Float, durationMs: Long = 60L, onResult: (Boolean) -> Unit): Boolean =
+        runCatching {
+            val path = Path().apply { moveTo(x, y) }
+            dispatchGesture(
+                GestureDescription.Builder()
+                    .addStroke(
+                        GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(30L, 5000L)),
+                    )
+                    .build(),
+                object : GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) = onResult(true)
+
+                    override fun onCancelled(gestureDescription: GestureDescription?) = onResult(false)
+                },
+                handler,
+            )
+        }.getOrDefault(false)
+
     /** 滚动一屏。 */
     fun scroll(up: Boolean): Boolean {
         val dm = resources.displayMetrics
